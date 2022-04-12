@@ -1,5 +1,5 @@
 {
-	"name": "kaniko-server Development",
+	"name": "kaniko-remote Development",
 	"build": {
 		"dockerfile": "Dockerfile",
 		"context": "..",
