@@ -18,7 +18,6 @@ class K8sSpecs:
     def generate_pod_spec(
         cls,
         instance_id: str,
-        kaniko_args: list[str],
         use_debug_image: bool,
         service_account_name: Optional[str],
     ) -> V1Pod:
@@ -59,7 +58,7 @@ class K8sSpecs:
                     V1Container(
                         name="builder",
                         image=kaniko_image,
-                        args=kaniko_args,
+                        # args=kaniko_args,
                         # command=["/busybox/sh", "-c"],
                         # args=["trap : TERM INT; sleep 9999999999d & wait"],
                         volume_mounts=[
@@ -76,10 +75,7 @@ class K8sSpecs:
         )
 
     @classmethod
-    def build_kaniko_args(
-        cls,
-        **kwargs,
-    ) -> list[str]:
+    def add_kaniko_args(cls, pod: V1Pod, **kwargs) -> V1Pod:
         required_args = ["context", "destination"]
         default_args = [("dockerfile", ".")]
 
@@ -91,13 +87,14 @@ class K8sSpecs:
             if key not in kwargs:
                 kwargs[key] = value
 
-        return [f"--{k}={v}" for k, v in kwargs.items()]
+        pod.spec.containers[0].command = None
+        pod.spec.containers[0].args = [f"--{k}={v}" for k, v in kwargs.items()]
+        return pod
 
     @classmethod
     def add_env_from_secret(cls, pod: V1Pod, secret_name: str) -> V1Pod:
-        for container in pod.spec.containers:
-            container: V1Container
-            if not container.env_from:
-                container.env_from = []
-            container.env_from.append(V1EnvFromSource(secret_ref=V1SecretReference(name=secret_name)))
+        container: V1Container = pod.spec.containers[0]
+        if not container.env_from:
+            container.env_from = []
+        container.env_from.append(V1EnvFromSource(secret_ref=V1SecretReference(name=secret_name)))
         return pod

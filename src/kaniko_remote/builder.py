@@ -1,12 +1,10 @@
-import asyncio
 import base64
 import json
-import os
 from contextlib import AbstractContextManager
 from pathlib import Path
 from signal import SIGINT
 from tempfile import TemporaryDirectory
-from typing import Callable, Optional
+from typing import Callable
 from urllib.parse import urlparse
 
 from kaniko_remote.k8s.k8s import K8sWrapper
@@ -17,42 +15,30 @@ logger = getLogger(__name__)
 
 
 class Builder(AbstractContextManager):
-    def __init__(
-        self,
-        k8s_wrapper: K8sWrapper,
-        instance_id: str,
-        context: Path,
-        destination: str,
-        dockerfile: Path,
-        use_debug_image: bool = False,
-        env_from_secret: Optional[str] = None,
-        service_account_name: Optional[str] = None,
-        acr_token: Optional[str] = None,
-    ) -> None:
+    def __init__(self, k8s_wrapper: K8sWrapper, instance_id: str, context: Path, destination: str, **kwargs) -> None:
         self.k8s = k8s_wrapper
-
         self.instance_id = instance_id
         self.context = context
         self.destination = destination
-        self.dockerfile = dockerfile
-
-        self.acr_token = acr_token
 
         self.pod_name = None
         self.stopped = False
 
-        self._kaniko_args = K8sSpecs.build_kaniko_args(
-            context=self.context, destination=self.destination, dockerfile=self.dockerfile
-        )
-        logger.debug("Using the following kaniko arguments: ", self._kaniko_args)
-        self._pod_spec = K8sSpecs.generate_pod_spec(
+        self.acr_token = kwargs.pop("acr_token", None)
+
+        pod_spec = K8sSpecs.generate_pod_spec(
             instance_id=self.instance_id,
-            kaniko_args=self._kaniko_args,
-            use_debug_image=use_debug_image,
-            service_account_name=service_account_name,
+            use_debug_image=kwargs.pop("use_debug_image", False),
+            service_account_name=kwargs.pop("service_account_name", None),
         )
-        if env_from_secret:
-            self._pod_spec = K8sSpecs.add_env_from_secret(self._pod_spec, env_from_secret)
+
+        if "env_from_secret" in kwargs:
+            pod_spec = K8sSpecs.add_env_from_secret(pod_spec, kwargs.pop("env_from_secret"))
+
+        kwargs.update(context=context, destination=destination)
+        pod_spec = K8sSpecs.add_kaniko_args(pod_spec, **kwargs)
+
+        self._pod_spec = pod_spec
         logger.debug("Generated pod spec for builder: ", self._pod_spec)
 
     def __enter__(self) -> "Builder":

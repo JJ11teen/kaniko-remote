@@ -73,20 +73,14 @@ def cli(ctx: click.Context, verbosity: str):
         az acr login --name <acr-name> --expose-token --output tsv --query accessToken
     """,
 )
-async def build(
-    file: Path,
-    tag: str,
-    path: Path,
-    namespace: str,
-    env_from_secret: Optional[str],
-    acr_token: Optional[str],
-):
+async def build(file: Path, tag: str, path: Path, **kwargs):
     """
     Build an image from a Dockerfile on a k8s cluster using kaniko
 
     This tool can be explicitly invoked as 'kaniko-remote'.
     If optionally installed, this tool can additionally be invoked as 'docker'.
     """
+    namespace = kwargs.pop("namespace")
     with K8sWrapper(namespace=namespace) as k8s:
         with Builder(
             k8s_wrapper=k8s,
@@ -95,9 +89,7 @@ async def build(
             destination=tag,
             dockerfile=file,
             use_debug_image=True,
-            env_from_secret=env_from_secret,
-            # service_account_name="eliiza-azurecr-push",
-            acr_token=acr_token,
+            **kwargs,
         ) as builder:
 
             await builder.setup()
