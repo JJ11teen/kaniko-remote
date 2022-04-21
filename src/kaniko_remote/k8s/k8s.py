@@ -1,4 +1,5 @@
 import base64
+import logging
 import os
 import tarfile
 from contextlib import AbstractContextManager
@@ -10,12 +11,13 @@ from typing import Generator, Optional
 from anyio import sleep
 from kubernetes import client, config
 from kubernetes.client.api_client import ApiClient
+from kubernetes.client.configuration import logging as k8s_logging
 from kubernetes.client.models import V1Pod
 from kubernetes.stream import stream
 from kubernetes.watch import Watch
 from tqdm import tqdm
 
-from kaniko_remote.logging import getLogger
+from kaniko_remote.logging import TRACE, getLogger
 
 logger = getLogger(__name__)
 
@@ -23,12 +25,15 @@ logger = getLogger(__name__)
 class K8sWrapper(AbstractContextManager):
     def __init__(
         self,
+        kubeconfig: str,
         namespace: str,
     ) -> None:
+        self.kubeconfig = kubeconfig
         self.namespace = namespace
 
     def __enter__(self) -> "K8sWrapper":
-        config.load_kube_config()
+        config.load_kube_config(config_file=self.kubeconfig)
+        k8s_logging.basicConfig(level=k8s_logging.WARN if logging.root.level > TRACE else k8s_logging.DEBUG)
         self._k8s_api = ApiClient()
         self.v1 = client.CoreV1Api(self._k8s_api)
         return self

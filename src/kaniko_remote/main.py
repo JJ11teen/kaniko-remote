@@ -1,10 +1,9 @@
-from email.policy import default
 from pathlib import Path
-from typing import Optional
 
 import asyncclick as click
 
 from kaniko_remote.builder import Builder
+from kaniko_remote.config.config import Config
 from kaniko_remote.k8s.k8s import K8sWrapper
 from kaniko_remote.logging import init_logging
 
@@ -35,6 +34,7 @@ def cli(ctx: click.Context, verbosity: str):
 @click.option(
     "-f",
     "--file",
+    "dockerfile",
     help='Name of the Dockerfile (Default is "PATH/Dockerfile")',
     type=click.Path(),
     default="Dockerfile",
@@ -42,6 +42,7 @@ def cli(ctx: click.Context, verbosity: str):
 @click.option(
     "-t",
     "--tag",
+    "destination",
     required=True,
     help='Name and tag in the "name:tag" format',
     type=str,
@@ -50,48 +51,24 @@ def cli(ctx: click.Context, verbosity: str):
     "path",
     type=click.Path(exists=True),
 )
-@click.option(
-    "-ns",
-    "--namespace",
-    default="default",
-    help='K8s namespace to create builder pod in (Default is "Default")',
-    type=str,
-)
-@click.option(
-    "-s",
-    "--env-from-secret",
-    help="Name of k8s secret to use for environment variables of builder",
-    type=str,
-)
-@click.option(
-    "--acr-token",
-    type=str,
-    default=None,
-    help="""
-        Access token for ACR (Azure Container Registry) temporary authentication.
-        Generate one with:
-        az acr login --name <acr-name> --expose-token --output tsv --query accessToken
-    """,
-)
-async def build(file: Path, tag: str, path: Path, **kwargs):
+async def build(path: Path, **kwargs):
     """
     Build an image from a Dockerfile on a k8s cluster using kaniko
 
     This tool can be explicitly invoked as 'kaniko-remote'.
     If optionally installed, this tool can additionally be invoked as 'docker'.
     """
-    namespace = kwargs.pop("namespace")
-    with K8sWrapper(namespace=namespace) as k8s:
+    config = Config()
+    with K8sWrapper(
+        kubeconfig=config.get_kubeconfig(),
+        namespace=config.get_namespace(),
+    ) as k8s:
         with Builder(
             k8s_wrapper=k8s,
-            instance_id="ad6ea8b",
+            config=config,
             context=path,
-            destination=tag,
-            dockerfile=file,
-            use_debug_image=True,
             **kwargs,
         ) as builder:
-
             await builder.setup()
             await builder.build(click.echo)
 

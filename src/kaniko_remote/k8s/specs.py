@@ -1,5 +1,3 @@
-from typing import Optional
-
 from kubernetes.client.models import (
     V1Container,
     V1EnvFromSource,
@@ -19,28 +17,43 @@ class K8sSpecs:
         cls,
         instance_id: str,
         use_debug_image: bool,
-        service_account_name: Optional[str],
+        cpu: str,
+        memory: str,
+        additional_labels: dict,
+        additional_annotations: dict,
     ) -> V1Pod:
         kaniko_image = (
             "gcr.io/kaniko-project/executor:debug" if use_debug_image else "gcr.io/kaniko-project/executor:latest"
         )
         setup_image = "busybox:stable"
 
+        docker_config_volume_mounts = [V1VolumeMount(name="config", mount_path="/kaniko/.docker")]
+        resources = dict(
+            limits=dict(cpu=cpu, memory=memory),
+            requests=dict(cpu=cpu, memory=memory),
+        )
+
+        # Additional labels could actually be a DeflatableDict at this point,
+        # which openapi-generator throws up about, so force into dict
+        labels = dict(**additional_labels) | {
+            "app.kubernetes.io/name": "kaniko-remote",
+            "app.kubernetes.io/component": "builder",
+            "kaniko-remote/instance": instance_id,
+            "kaniko-remote/version": __version__,
+        }
+
         return V1Pod(
             api_version="v1",
             kind="Pod",
             metadata=dict(
                 generateName=f"kaniko-remote-{instance_id}-",
-                labels={
-                    "app.kubernetes.io/name": "kaniko-remote",
-                    "app.kubernetes.io/component": "builder",
-                    "kaniko-remote/instance": instance_id,
-                    "kaniko-remote/version": __version__,
-                },
+                labels=labels,
+                # Additional annotations could actually be a DeflatableDict at this point,
+                # which openapi-generator throws up about, so force into dict
+                annotations=dict(**additional_annotations),
             ),
             spec=V1PodSpec(
-                service_account_name=service_account_name,
-                automount_service_account_token=service_account_name is not None,
+                automount_service_account_token=False,
                 init_containers=[
                     V1Container(
                         name="setup",
@@ -48,10 +61,8 @@ class K8sSpecs:
                         command=["sh", "-c"],
                         # args=["trap : TERM INT; sleep 9999999999d & wait"],
                         args=["until [ -e /kaniko/.docker/config.json ]; do sleep 1; done"],
-                        volume_mounts=[
-                            V1VolumeMount(name="context", mount_path="/workspace"),
-                            V1VolumeMount(name="config", mount_path="/kaniko/.docker"),
-                        ],
+                        volume_mounts=docker_config_volume_mounts,
+                        resources=resources,
                     )
                 ],
                 containers=[
@@ -61,18 +72,22 @@ class K8sSpecs:
                         # args=kaniko_args,
                         # command=["/busybox/sh", "-c"],
                         # args=["trap : TERM INT; sleep 9999999999d & wait"],
-                        volume_mounts=[
-                            V1VolumeMount(name="context", mount_path="/workspace"),
-                            V1VolumeMount(name="config", mount_path="/kaniko/.docker"),
-                        ],
+                        volume_mounts=docker_config_volume_mounts,
+                        resources=resources,
                     )
                 ],
-                volumes=[
-                    V1Volume(name="context", empty_dir={}),
-                    V1Volume(name="config", empty_dir={}),
-                ],
+                volumes=[V1Volume(name="config", empty_dir={})],
             ),
         )
+
+    @classmethod
+    def mount_context_for_exec_transfer(cls, pod: V1Pod) -> V1Pod:
+        pod.spec.volumes.append(V1Volume(name="context", empty_dir={}))
+
+        # For some reason appending to either the main container or the init container appends to both,
+        # so we only append to one.
+        pod.spec.containers[0].volume_mounts.append(V1VolumeMount(name="context", mount_path="/workspace"))
+        return pod
 
     @classmethod
     def add_kaniko_args(cls, pod: V1Pod, **kwargs) -> V1Pod:
@@ -92,9 +107,19 @@ class K8sSpecs:
         return pod
 
     @classmethod
-    def add_env_from_secret(cls, pod: V1Pod, secret_name: str) -> V1Pod:
+    def replace_service_account(cls, pod: V1Pod, service_account_name: str) -> V1Pod:
+        pod.spec.service_account_name = service_account_name
+        pod.spec.automount_service_account_token = True
+        return pod
+
+    @classmethod
+    def append_env_from_secret(cls, pod: V1Pod, secret_name: str) -> V1Pod:
         container: V1Container = pod.spec.containers[0]
         if not container.env_from:
             container.env_from = []
         container.env_from.append(V1EnvFromSource(secret_ref=V1SecretReference(name=secret_name)))
         return pod
+
+    @classmethod
+    def append_file_mount_from_secret(cls, pod: V1Pod, secret_name: str) -> V1Pod:
+        raise NotImplementedError()
