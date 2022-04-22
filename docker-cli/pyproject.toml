@@ -1,0 +1,21 @@
+[build-system]
+requires = [
+    "setuptools>=45",
+    "wheel",
+    "setuptools_scm>=6.2",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kaniko-remote-docker-cli"
+dynamic = ["version"]
+
+[project.urls]
+github = "https://github.com/JJ11teen/kaniko-remote"
+pypi = "https://pypi.org/project/kaniko-remote"
+
+[tool.setuptools_scm]
+root = ".."
+
+[project.scripts]
+docker = "kaniko_remote.main:cli"

@@ -1,9 +1,51 @@
 [build-system]
 requires = [
-    "setuptools>=42",
+    "setuptools>=45",
     "wheel",
+    "setuptools_scm>=6.2",
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "kaniko-remote"
+description = "Enable familiar `docker build` semantics using kaniko on k8s"
+authors = [
+  {name = "Lucas"},
+  {email = "me@lucas.fish"},
+]
+readme = "README.md"
+keywords = ["kaniko", "kubernetes", "k8s", "docker", "build", "images", "remote"]
+license = {text = "MIT License"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "asyncclick>=8.0",
+    "anyio>=3.5",
+    "ruamel.yaml>=0.3",
+    "tqdm>=4",
+    "kubernetes>=22.6",
+]
+dynamic = ["version"]
+
+[project.urls]
+github = "https://github.com/JJ11teen/kaniko-remote"
+pypi = "https://pypi.org/project/kaniko-remote"
+
+[project.optional-dependencies]
+tests = ["pytest==6.2.4"]
+docker = ["kaniko-remote-docker-cli"]
+
+[project.scripts]
+kaniko-remote = "kaniko_remote.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools_scm]
+write_to = "src/kaniko_remote/_version.py"
 
 [tool.black]
 line-length = 120
