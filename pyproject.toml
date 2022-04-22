@@ -27,7 +27,7 @@ dependencies = [
     "ruamel.yaml>=0.3",
     "tqdm>=4",
     "kubernetes>=22.6",
-    "deflatabledict",
+    "deflatable-dict",
 ]
 dynamic = ["version"]
 
