@@ -12,9 +12,10 @@ logger = getLogger(__name__)
 
 _default_builder_options = dict(
     instance_id=getpass.getuser(),
-    use_debug_image=False,
     cpu="1",
     memory="1G",
+    kaniko_image="gcr.io/kaniko-project/executor:latest",
+    setup_image="busybox:stable",
     additional_labels={},
     additional_annotations={},
 )
@@ -34,24 +35,26 @@ class Config:
     _snake_caseify_regex = re.compile(r"(?<!^)(?=[A-Z])")
 
     def __init__(self) -> None:
+        self.c = {}
         config_location = os.environ.get(_config_env_var, None)
         if config_location is None:
             relative_config = f"{os.getcwd()}/{_config_name}"
-            user_config = os.path.abspath(f"~/{_config_name}")
+            user_config = os.path.expanduser(f"~/{_config_name}")
             if os.path.exists(relative_config):
                 config_location = relative_config
             elif os.path.exists(user_config):
                 config_location = user_config
             else:
-                raise ValueError(
-                    'Could not find kaniko-remote config file. Please create one with "kaniko-remote configure"'
+                logger.warning(
+                    'Could not find a kaniko-remote config file, attempting to run with unauthorised registry access. Configure registry authorisation and other builder options with "kaniko-remote config".'
                 )
-        logger.info(f"Using config file: {config_location}")
+        if config_location is not None:
+            logger.info(f"Using config file: {config_location}")
 
-        with open(config_location, "r") as yaml_file:
-            parser = YAML(typ="safe")
-            self.c = DeflatableDict(d=parser.load(yaml_file))
-        logger.debug(f"Parsed config as: {self.c}")
+            with open(config_location, "r") as yaml_file:
+                parser = YAML(typ="safe")
+                self.c = DeflatableDict(d=parser.load(yaml_file))
+            logger.debug(f"Parsed config as: {self.c}")
 
     def _snake_caseify_dict(self, d: dict) -> dict:
         return {self._snake_caseify_regex.sub("_", k).lower(): v for k, v in d.items()}

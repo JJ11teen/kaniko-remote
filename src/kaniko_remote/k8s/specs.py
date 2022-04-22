@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from kubernetes.client.models import (
     V1Container,
     V1EnvFromSource,
@@ -16,29 +18,28 @@ class K8sSpecs:
     def generate_pod_spec(
         cls,
         instance_id: str,
-        use_debug_image: bool,
         cpu: str,
         memory: str,
+        kaniko_image: str,
+        setup_image: str,
         additional_labels: dict,
         additional_annotations: dict,
     ) -> V1Pod:
-        kaniko_image = (
-            "gcr.io/kaniko-project/executor:debug" if use_debug_image else "gcr.io/kaniko-project/executor:latest"
-        )
-        setup_image = "busybox:stable"
-
         docker_config_volume_mounts = [V1VolumeMount(name="config", mount_path="/kaniko/.docker")]
         resources = dict(
             limits=dict(cpu=cpu, memory=memory),
             requests=dict(cpu=cpu, memory=memory),
         )
 
-        # Additional labels could actually be a DeflatableDict at this point,
-        # which openapi-generator throws up about, so force into dict
+        # Additional labels/annotations could actually be a DeflatableDict at this point,
+        # which openapi-generator throws up about, so force each into dict before adding
+        # 'system' labels/annotations
         labels = dict(**additional_labels) | {
             "app.kubernetes.io/name": "kaniko-remote",
             "app.kubernetes.io/component": "builder",
             "kaniko-remote/instance": instance_id,
+        }
+        annotations = dict(**additional_annotations) | {
             "kaniko-remote/version": __version__,
         }
 
@@ -48,9 +49,7 @@ class K8sSpecs:
             metadata=dict(
                 generateName=f"kaniko-remote-{instance_id}-",
                 labels=labels,
-                # Additional annotations could actually be a DeflatableDict at this point,
-                # which openapi-generator throws up about, so force into dict
-                annotations=dict(**additional_annotations),
+                annotations=annotations,
             ),
             spec=V1PodSpec(
                 automount_service_account_token=False,

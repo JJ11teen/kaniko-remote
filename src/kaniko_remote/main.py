@@ -3,7 +3,7 @@ from pathlib import Path
 import asyncclick as click
 
 from kaniko_remote.builder import Builder
-from kaniko_remote.config.config import Config
+from kaniko_remote.config import Config
 from kaniko_remote.k8s.k8s import K8sWrapper
 from kaniko_remote.logging import init_logging
 
