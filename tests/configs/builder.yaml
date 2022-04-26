@@ -1,0 +1,14 @@
+kubernetes:
+  namespace: builder-config
+builder:
+  instanceId: tests
+  cpu: 200m
+  memory: 200m
+  kanikoImage: mycool.registry/kaniko-image
+  setupImage: mycool.registry/busybox-image
+  additionalLabels:
+    test-label-one: yes-here-is-one
+    test-label-two: https://github.com/JJ11teen/kaniko-remote
+  additionalAnnotations:
+    test-annotation-one: yes-here-is-one
+    test-annotation-two: https://github.com/JJ11teen/kaniko-remote

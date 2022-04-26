@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from typing import List
+
 from kubernetes.client.models import (
+    V1ConfigMapEnvSource,
     V1Container,
     V1EnvFromSource,
+    V1EnvVar,
     V1Pod,
     V1PodSpec,
     V1SecretReference,
+    V1SecretVolumeSource,
     V1Volume,
     V1VolumeMount,
 )
@@ -120,5 +125,32 @@ class K8sSpecs:
         return pod
 
     @classmethod
-    def append_file_mount_from_secret(cls, pod: V1Pod, secret_name: str) -> V1Pod:
-        raise NotImplementedError()
+    def append_env_from_config_map(cls, pod: V1Pod, config_map_name: str) -> V1Pod:
+        container: V1Container = pod.spec.containers[0]
+        if not container.env_from:
+            container.env_from = []
+        container.env_from.append(V1EnvFromSource(config_map_ref=V1ConfigMapEnvSource(name=config_map_name)))
+        return pod
+
+    def append_env_var(cls, pod: V1Pod, env_var_name: str, env_var_value) -> V1Pod:
+        container: V1Container = pod.spec.containers[0]
+        if not container.env:
+            container.env = []
+        container.env.append(V1EnvVar(name=env_var_name, value=env_var_value))
+        return pod
+
+    @classmethod
+    def append_volume_from_secret(cls, pod: V1Pod, secret_name: str, mount_path: str) -> V1Pod:
+        mounts: List[V1VolumeMount] = pod.spec.containers[0].volume_mounts
+        volumes: List[V1Volume] = pod.spec.volumes
+        mounts.append(V1VolumeMount(name=secret_name, mount_path=mount_path))
+        volumes.append(V1Volume(name=secret_name, secret=V1SecretVolumeSource(secret_name=secret_name)))
+        return pod
+
+    @classmethod
+    def append_volume_from_config_map(cls, pod: V1Pod, config_map_name: str, mount_path: str) -> V1Pod:
+        mounts: List[V1VolumeMount] = pod.spec.containers[0].volume_mounts
+        volumes: List[V1Volume] = pod.spec.volumes
+        mounts.append(V1VolumeMount(name=config_map_name, mount_path=mount_path))
+        volumes.append(V1Volume(name=config_map_name, secret=V1ConfigMapEnvSource(name=config_map_name)))
+        return pod

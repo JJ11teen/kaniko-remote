@@ -1,0 +1,34 @@
+kubernetes:
+  namespace: pod-only-auth-config
+auth:
+- url: my.reg/env-explicit-key-values
+  type: pod-only
+  env:
+  - key: SOME_KEY_1
+    value: big-secret
+  - key: SOME_KEY_2
+    value: not-so-big-secret
+  - key: SOME_OTHER_VALUE
+    value: "true"
+  mount: always
+- url: my.reg/env-from-k8s-resources
+  env:
+  - fromSecret: my-k8s-secret-with-env-vars
+  - fromConfigMap: my-k8s-config-map-with-env-vars
+  - fromSecret: my-k8s-secret-with-env-vars-two
+- url: my.reg/volumes-from-k8s-resources
+  volumes:
+  - fromSecret: my-k8s-secret-with-file
+    mountPath: /etc/secret-file
+  - fromConfigMap: my-k8s-config-map-with-file
+    mountPath: /etc/config-map-file
+- url: my.reg/everything-k8s-resources
+  env:
+  - fromSecret: my-k8s-secret-with-env-vars
+  - fromConfigMap: my-k8s-config-map-with-env-vars
+  - fromSecret: my-k8s-secret-with-env-vars-two
+  volumes:
+  - fromSecret: my-k8s-secret-with-file
+    mountPath: /etc/secret-file
+  - fromConfigMap: my-k8s-config-map-with-file
+    mountPath: /etc/config-map-file

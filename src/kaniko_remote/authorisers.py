@@ -53,9 +53,60 @@ class PodOnlyAuth(KanikoAuthoriser):
     def __init__(self, **kwargs) -> None:
         self.url = kwargs.pop("url")
         self._service_account = kwargs.pop("service_account")
-        self._secret_as_env_vars = kwargs.pop("secret_as_env_vars")
-        self._secret_as_file = kwargs.pop("secret_as_file")
-        kwargs.pop("always_mount")
+        envs = kwargs.pop("env")
+        volumes = kwargs.pop("volumes")
+        kwargs.pop("mount", None)
+
+        self._env_from_secrets = []
+        self._env_from_config_maps = []
+        self._env_key_values = []
+        for env in envs:
+            from_secret = env.pop("from_secret", None)
+            if from_secret:
+                self._env_from_secrets.append(from_secret)
+                if len(env) > 0:
+                    raise ValueError(
+                        f"Invalid auth config for '{self.url}'. Env with 'fromSecret' should not contain other values, got: {env}"
+                    )
+            from_config_map = env.pop("from_config_map", None)
+            if from_config_map:
+                self._env_from_config_maps.append(from_config_map)
+                if len(env) > 0:
+                    raise ValueError(
+                        f"Invalid auth config for '{self.url}'. Env with 'fromConfigMap' should not contain other values, got: {env}"
+                    )
+            key = env.pop("key", None)
+            value = env.pop("value", None)
+            if key and value:
+                self._env_key_values.append((key, value))
+            raise ValueError(
+                f"Invalid auth config for '{self.url}'. Env must specify one of 'fromSecret', 'fromConfigMap', or both 'key' and 'value'. Instead got: {env}"
+            )
+
+        self._volumes_from_secrets = []
+        self._volumes_from_config_maps = []
+        for vol in volumes:
+            mount_path = vol.pop("mount_path", None)
+            if mount_path is None:
+                raise ValueError(f"Invalid auth config for '{self.url}'. Volume with missing 'mountPath', got {vol}")
+
+            from_secret = vol.pop("from_secret", None)
+            if from_secret:
+                self._volumes_from_secrets.append((from_secret, mount_path))
+                if len(vol) > 0:
+                    raise ValueError(
+                        f"Invalid auth config for '{self.url}'. Volume with 'fromSecret' should not contain other values, got: {vol}"
+                    )
+            from_config_map = vol.pop("from_config_map", None)
+            if from_config_map:
+                self._volumes_from_config_maps.append((from_config_map, mount_path))
+                if len(env) > 0:
+                    raise ValueError(
+                        f"Invalid auth config for '{self.url}'. Volume with 'fromConfigMap' should not contain other values, got: {vol}"
+                    )
+            raise ValueError(
+                f"Invalid auth config for '{self.url}'. Volume must specify either 'fromSecret' or 'fromConfigMap'. Instead got: {vol}"
+            )
 
         if len(kwargs) > 0:
             raise ValueError(f"Invalid auth config for '{self.url}' specified: {kwargs}")
@@ -63,10 +114,21 @@ class PodOnlyAuth(KanikoAuthoriser):
     def append_auth_to_pod(self, pod_spec: V1Pod) -> V1Pod:
         if self._service_account:
             pod_spec = K8sSpecs.replace_service_account(pod=pod_spec, service_account_name=self._service_account)
-        if self._secret_as_env_vars:
-            pod_spec = K8sSpecs.append_env_from_secret(pod=pod_spec, secret_name=self._secret_as_env_vars)
-        if self._secret_as_file:
-            pod_spec = K8sSpecs.append_file_mount_from_secret(pod=pod_spec, secret_name=self._secret_as_file)
+
+        for secret in self._env_from_secrets:
+            pod_spec = K8sSpecs.append_env_from_secret(pod=pod_spec, secret_name=secret)
+        for config_map in self._env_from_config_maps:
+            pod_spec = K8sSpecs.append_env_from_config_map(pod=pod_spec, config_map_name=config_map)
+        for key, value in self._env_key_values:
+            pod_spec = K8sSpecs.append_env_var(pod=pod_spec, key=key, value=value)
+
+        for secret, mount_path in self._volumes_from_secrets:
+            pod_spec = K8sSpecs.append_volume_from_secret(pod=pod_spec, secret_name=secret, mount_path=mount_path)
+        for config_map, mount_path in self._volumes_from_config_maps:
+            pod_spec = K8sSpecs.append_volume_from_config_map(
+                pod=pod_spec, config_map_name=config_map, mount_path=mount_path
+            )
+
         return pod_spec
 
     def append_auth_to_docker_config(self, docker_config: dict) -> dict:

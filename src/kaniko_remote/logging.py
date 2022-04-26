@@ -6,6 +6,7 @@ from logging import getLogger as getDefaultLogger
 from typing import Union
 
 TRACE = 5
+_log_format = "%(asctime)s [%(levelno)s] %(message)s"
 
 logging.addLevelName(5, "TRACE")
 
@@ -31,8 +32,8 @@ def init_logging(level: Union[str, int]):
         level = logging.getLevelName(level_str)
         if "Level" in level_str:
             raise ValueError(f"Unknown logging level '{level_str}'")
-        logging.basicConfig(level=level)
+        logging.basicConfig(level=level, format=_log_format)
         logger.debug(f"Logging initialised to level '{level_str}'")
     else:
-        logging.basicConfig(level=level)
+        logging.basicConfig(level=level, format=_log_format)
         logger.debug(f"Logging initialised to level '{level}'")

@@ -1,6 +1,0 @@
-kubernetes:
-  namespace: simple-config
-builder:
-  instanceId: tests
-  cpu: 200m
-  memory: 200m
