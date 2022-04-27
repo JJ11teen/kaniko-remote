@@ -103,18 +103,17 @@ class K8sSpecs:
     @classmethod
     def set_kaniko_args(cls, pod: V1Pod, **kwargs) -> V1Pod:
         required_args = ["context", "destination"]
-        default_args = [("dockerfile", ".")]
 
         for required_arg in required_args:
             if required_arg not in kwargs:
                 raise ValueError(f"Missing required kaniko argument --{required_arg}")
 
-        for key, value in default_args:
-            if key not in kwargs:
-                kwargs[key] = value
+        # Start with defaults which may be overriden
+        args = {"dockerfile": "."}
+        args.update(kwargs)
 
         pod.spec.containers[0].command = None
-        pod.spec.containers[0].args = [f'--{k}="{v}"' for k, v in kwargs.items()]
+        pod.spec.containers[0].args = [f'--{k}="{v}"' for k, v in args.items()]
         return pod
 
     @classmethod

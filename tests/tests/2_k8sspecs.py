@@ -118,8 +118,6 @@ class K8sSpecTests:
         assert len(setup_container.volume_mounts) == 2
 
     def test_set_kaniko_args(self, base_pod: V1Pod):
-        build_container: V1Container = base_pod.spec.containers[0]
-
         with pytest.raises(ValueError, match="Missing required kaniko argument"):
             K8sSpecs.set_kaniko_args(pod=base_pod)
         with pytest.raises(ValueError, match="Missing required kaniko argument"):
@@ -132,9 +130,13 @@ class K8sSpecTests:
             context="dir",
             destination="tag",
         )
+        build_container: V1Container = base_pod.spec.containers[0]
 
         assert build_container.command is None
-        assert build_container.args == ['--context="dir"', '--destination="tag"', '--dockerfile="."']
+        assert len(build_container.args) == 3
+        assert '--context="dir"' in build_container.args
+        assert '--destination="tag"' in build_container.args
+        assert '--dockerfile="."' in build_container.args
 
         base_pod = K8sSpecs.set_kaniko_args(
             pod=base_pod,
@@ -142,22 +144,30 @@ class K8sSpecTests:
             destination="tag",
             dockerfile="unusual",
         )
+        build_container: V1Container = base_pod.spec.containers[0]
 
         assert build_container.command is None
-        assert build_container.args == ['--context="dir"', '--destination="tag"', '--dockerfile="unusual"']
+        assert len(build_container.args) == 3
+        assert '--context="dir"' in build_container.args
+        assert '--destination="tag"' in build_container.args
+        assert '--dockerfile="unusual"' in build_container.args
 
         base_pod = K8sSpecs.set_kaniko_args(
             pod=base_pod,
-            **{"context": "dir", "destination": "tag", "build-arg": "MY_ARG=VALUE"},
+            **{
+                "context": "dir",
+                "destination": "tag",
+                "build-arg": "MY_ARG=VALUE",
+            },
         )
+        build_container: V1Container = base_pod.spec.containers[0]
 
         assert build_container.command is None
-        assert build_container.args == [
-            '--context="dir"',
-            '--destination="tag"',
-            '--build-arg="MY_ARG=VALUE"',
-            '--dockerfile="."',
-        ]
+        assert len(build_container.args) == 4
+        assert '--context="dir"' in build_container.args
+        assert '--destination="tag"' in build_container.args
+        assert '--dockerfile="."' in build_container.args
+        assert '--build-arg="MY_ARG=VALUE"' in build_container.args
 
     def test_replace_service_account(self, base_pod: V1Pod):
         assert base_pod.spec.automount_service_account_token == False
