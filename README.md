@@ -1,6 +1,21 @@
 # kaniko-remote
-Enable familiar `docker build` semantics using remote kaniko on k8s
+Enable familiar `docker build` semantics using kaniko remotely on a preconfigured k8s cluster
 
+## Quick Start
+Install with pip, optionally with the docker alias:
+
+```bash
+pip install kaniko-remote[docker]
+```
+
+Run docker build commands as expected:
+```bash
+docker build -t registry.fish/my/cool-image:latest .
+# Or without the docker alias:
+kaniko-remote build -t registry.fish/my/cool-image:latest .
+```
+
+## Config
 ```yaml
 kubernetes:
   # kubeconfig: 
@@ -17,24 +32,12 @@ builder:
   #   why: not
 auth:
   - url: eliiza.azurecr.io
-    alwaysMount: False
+    mount: always
     type: acr
-    serviceAccount: False
-    secretAsEnvVars: eliiza-azurecr-push-sp
-    secretAsFile: False
-    #TODO: mount this as /secrets (from kaniko docs, for gcp)
-    token: False
+    env:
+    - fromSecret: eliiza-azurecr-push-sp
   - url: gs://kaniko-bucket
     type: pod-only
-    serviceAccount: False
-    secretAsEnvVars: False
-    secretAsFile: False
   - url: s3://kaniko-bucket
-    serviceAccount: False
-    secretAsEnvVars: False
-    secretAsFile: False
   - url: https://myaccount.blob.core.windows.net/container
-    serviceAccount: False
-    secretAsEnvVars: False
-    secretAsFile: False
 ```
