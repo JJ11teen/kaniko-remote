@@ -66,7 +66,7 @@ class Config:
         return self.y.get("kubernetes.namespace", "default")
 
     def get_builder_options(self) -> dict:
-        return _default_builder_options.update(self._snake_caseify_dict(self.y.get("builder", {})))
+        return {**_default_builder_options, **(self._snake_caseify_dict(self.y.get("builder", {})))}
 
     def list_all_authorisers(self) -> list:
         return [a["url"] for a in self.y.get("auth", [])]
@@ -78,7 +78,7 @@ class Config:
         matching = [a for a in self.y.get("auth", []) if a["url"] == url]
         if len(matching) == 0:
             return _default_auth_options
-        auth = _default_auth_options.update(self._snake_caseify_dict(matching[0]))
+        auth = {**_default_auth_options, **self._snake_caseify_dict(matching[0])}
         auth["env"] = [self._snake_caseify_dict(e) for e in auth["env"]]
         auth["volumes"] = [self._snake_caseify_dict(v) for v in auth["volumes"]]
         return auth
