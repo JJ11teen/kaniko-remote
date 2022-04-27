@@ -9,16 +9,6 @@ from kaniko_remote.logging import init_logging
 
 
 @click.group()
-@click.option(
-    "-v",
-    "--verbosity",
-    type=click.Choice(
-        ["trace", "debug", "info", "warn", "error", "fatal", "panic"],
-        case_sensitive=False,
-    ),
-    default="info",
-    # help='Log level (trace, debug, info, warn, error, fatal, panic) (default "info")',
-)
 @click.pass_context
 def cli(ctx: click.Context, verbosity: str):
     """
@@ -39,17 +29,29 @@ def cli(ctx: click.Context, verbosity: str):
     help='Name and tag in the "name:tag" format',
     type=str,
 )
+@click.option(
+    "-v",
+    "--verbosity",
+    type=click.Choice(
+        ["trace", "debug", "info", "warn", "error", "fatal", "panic"],
+        case_sensitive=False,
+    ),
+    default="info",
+    # help='Log level (trace, debug, info, warn, error, fatal, panic) (default "info")',
+)
 @click.argument(
     "path",
     type=click.Path(exists=True),
 )
-async def build(path: Path, **kwargs):
+@click.pass_context
+async def build(ctx: click.Context, path: Path, **kwargs):
     """
     Build an image from a Dockerfile on a k8s cluster using kaniko
 
     This tool can be explicitly invoked as 'kaniko-remote'.
     If optionally installed, this tool can additionally be invoked as 'docker'.
     """
+    kwargs.update(dict(zip(ctx.args[::2], ctx.args[1::2])))
     config = Config()
     with K8sWrapper(
         kubeconfig=config.get_kubeconfig(),
