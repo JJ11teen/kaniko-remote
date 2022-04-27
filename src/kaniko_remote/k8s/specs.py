@@ -39,14 +39,18 @@ class K8sSpecs:
         # Additional labels/annotations could actually be a DeflatableDict at this point,
         # which openapi-generator throws up about, so force each into dict before adding
         # 'system' labels/annotations
-        labels = dict(**additional_labels) | {
-            "app.kubernetes.io/name": "kaniko-remote",
-            "app.kubernetes.io/component": "builder",
-            "kaniko-remote/instance": instance_id,
-        }
-        annotations = dict(**additional_annotations) | {
-            "kaniko-remote/version": __version__,
-        }
+        labels = dict(**additional_labels).update(
+            {
+                "app.kubernetes.io/name": "kaniko-remote",
+                "app.kubernetes.io/component": "builder",
+                "kaniko-remote/instance": instance_id,
+            }
+        )
+        annotations = dict(**additional_annotations).update(
+            {
+                "kaniko-remote/version": __version__,
+            }
+        )
 
         return V1Pod(
             api_version="v1",
