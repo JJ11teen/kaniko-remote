@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 from contextlib import AbstractContextManager
 from signal import SIGINT
 from tempfile import TemporaryDirectory
@@ -33,6 +34,9 @@ class Builder(AbstractContextManager):
 
         if local_context:
             pod_spec = K8sSpecs.mount_context_for_exec_transfer(pod_spec)
+            dockerfile = kaniko_kwargs.get("dockerfile", None)
+            if dockerfile and not os.path.isfile(f"{local_context}/{dockerfile}"):
+                raise ValueError(f"Could not find dockerfile {dockerfile} within local context {local_context}")
         else:
             urls_to_auth.append(kaniko_kwargs["context"])
 
