@@ -37,7 +37,6 @@ def cli(ctx: click.Context, verbosity: str):
     "dockerfile",
     help='Name of the Dockerfile (Default is "PATH/Dockerfile")',
     type=click.Path(),
-    default="Dockerfile",
 )
 @click.option(
     "-t",
