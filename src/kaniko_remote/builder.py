@@ -38,7 +38,7 @@ class Builder(AbstractContextManager):
 
         authorisers: List[KanikoAuthoriser] = get_matching_authorisers(urls=urls_to_auth, config=config)
         docker_config = {}
-        pod_spec = K8sSpecs.add_kaniko_args(pod_spec, **kaniko_kwargs)
+        pod_spec = K8sSpecs.set_kaniko_args(pod_spec, **kaniko_kwargs)
 
         for auth in authorisers:
             docker_config = auth.append_auth_to_docker_config(docker_config=docker_config)

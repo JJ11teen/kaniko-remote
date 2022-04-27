@@ -31,6 +31,7 @@ class K8sSpecs:
         additional_annotations: dict,
     ) -> V1Pod:
         docker_config_volume_mounts = [V1VolumeMount(name="config", mount_path="/kaniko/.docker")]
+
         resources = dict(
             limits=dict(cpu=cpu, memory=memory),
             requests=dict(cpu=cpu, memory=memory),
@@ -100,7 +101,7 @@ class K8sSpecs:
         return pod
 
     @classmethod
-    def add_kaniko_args(cls, pod: V1Pod, **kwargs) -> V1Pod:
+    def set_kaniko_args(cls, pod: V1Pod, **kwargs) -> V1Pod:
         required_args = ["context", "destination"]
         default_args = [("dockerfile", ".")]
 
@@ -113,7 +114,7 @@ class K8sSpecs:
                 kwargs[key] = value
 
         pod.spec.containers[0].command = None
-        pod.spec.containers[0].args = [f"--{k}={v}" for k, v in kwargs.items()]
+        pod.spec.containers[0].args = [f'--{k}="{v}"' for k, v in kwargs.items()]
         return pod
 
     @classmethod
@@ -138,6 +139,7 @@ class K8sSpecs:
         container.env_from.append(V1EnvFromSource(config_map_ref=V1ConfigMapEnvSource(name=config_map_name)))
         return pod
 
+    @classmethod
     def append_env_var(cls, pod: V1Pod, env_var_name: str, env_var_value) -> V1Pod:
         container: V1Container = pod.spec.containers[0]
         if not container.env:
@@ -158,5 +160,5 @@ class K8sSpecs:
         mounts: List[V1VolumeMount] = pod.spec.containers[0].volume_mounts
         volumes: List[V1Volume] = pod.spec.volumes
         mounts.append(V1VolumeMount(name=config_map_name, mount_path=mount_path))
-        volumes.append(V1Volume(name=config_map_name, secret=V1ConfigMapEnvSource(name=config_map_name)))
+        volumes.append(V1Volume(name=config_map_name, config_map=V1ConfigMapEnvSource(name=config_map_name)))
         return pod

@@ -5,12 +5,8 @@ import os
 from pathlib import Path
 
 import pytest
-from _pytest.python import Metafunc
 
 from kaniko_remote.config import Config
-
-_local_config = os.getcwd() + "/.kaniko-remote.yaml"
-_user_config = os.path.expanduser("~/.kaniko-remote.yaml")
 
 
 def _write_test_config(location: Path, namespace):
@@ -23,41 +19,12 @@ def _write_test_config(location: Path, namespace):
         )
 
 
-def pytest_generate_tests(metafunc: Metafunc):
-    for param in metafunc.fixturenames:
-        if param.startswith("test_config_"):
-            config_name = param[12:]
-            os.environ["KANIKO_REMOTE_CONFIG"] = os.path.abspath(
-                f"{metafunc.config.rootdir}/tests/configs/{config_name}.yaml"
-            )
-            metafunc.parametrize(
-                param,
-                [Config()],
-            )
-
-
-@pytest.fixture(scope="function")
-def remove_configs():
-    try:
-        os.remove(_local_config)
-    except FileNotFoundError:
-        pass
-    try:
-        os.remove(_user_config)
-    except FileNotFoundError:
-        pass
-    try:
-        os.environ.pop("KANIKO_REMOTE_CONFIG")
-    except KeyError:
-        pass
-
-
 @pytest.mark.usefixtures("remove_configs")
 class ConfigTests:
-    def test_config_location_preference(self, tmp_path):
+    def test_config_location_preference(self, tmp_path, user_config_location, local_config_location):
         env_var_config = tmp_path / "some-other-config.yaml"
 
-        _write_test_config(_user_config, "user-config")
+        _write_test_config(user_config_location, "user-config")
         _write_test_config(env_var_config, "env-var-config")
 
         # If no local config, default to user config
@@ -65,7 +32,7 @@ class ConfigTests:
         assert config.get_namespace() == "user-config"
 
         # If now a local config, use that
-        _write_test_config(_local_config, "local-config")
+        _write_test_config(local_config_location, "local-config")
         config = Config()
         assert config.get_namespace() == "local-config"
 
@@ -116,7 +83,7 @@ class ConfigTests:
         assert len(test_config_builder.list_always_mount_authorisers()) == 0
         assert len(test_config_builder.list_all_authorisers()) == 0
 
-    def test_pod_only_auth_config_auths_lists_correctly(self, test_config_pod_only_auth: Config):
+    def test_pod_only_config_auths_lists_correctly(self, test_config_pod_only_auth: Config):
         assert test_config_pod_only_auth.get_kubeconfig() is None
         assert test_config_pod_only_auth.get_namespace() == "pod-only-auth-config"
 
@@ -131,7 +98,7 @@ class ConfigTests:
         always_auths = test_config_pod_only_auth.list_always_mount_authorisers()
         assert always_auths == ["my.reg/env-explicit-key-values"]
 
-    def test_pod_only_auth_config_env_explicit_key_values(self, test_config_pod_only_auth: Config):
+    def test_pod_only_config_env_explicit_key_values(self, test_config_pod_only_auth: Config):
         auth = test_config_pod_only_auth.get_authoriser_options("my.reg/env-explicit-key-values")
 
         assert auth["url"] == "my.reg/env-explicit-key-values"
@@ -143,7 +110,7 @@ class ConfigTests:
         ]
         assert auth["volumes"] == []
 
-    def test_pod_only_auth_config_env_from_k8s_resources(self, test_config_pod_only_auth: Config):
+    def test_pod_only_config_env_from_k8s_resources(self, test_config_pod_only_auth: Config):
         auth = test_config_pod_only_auth.get_authoriser_options("my.reg/env-from-k8s-resources")
 
         assert auth["url"] == "my.reg/env-from-k8s-resources"
@@ -155,7 +122,7 @@ class ConfigTests:
         ]
         assert auth["volumes"] == []
 
-    def test_pod_only_auth_config_volumes_from_k8s_resources(self, test_config_pod_only_auth: Config):
+    def test_pod_only_config_volumes_from_k8s_resources(self, test_config_pod_only_auth: Config):
         auth = test_config_pod_only_auth.get_authoriser_options("my.reg/volumes-from-k8s-resources")
 
         assert auth["url"] == "my.reg/volumes-from-k8s-resources"
@@ -166,7 +133,7 @@ class ConfigTests:
             {"from_config_map": "my-k8s-config-map-with-file", "mount_path": "/etc/config-map-file"},
         ]
 
-    def test_pod_only_auth_config_everything_k8s_resources(self, test_config_pod_only_auth: Config):
+    def test_pod_only_config_everything_k8s_resources(self, test_config_pod_only_auth: Config):
         auth = test_config_pod_only_auth.get_authoriser_options("my.reg/everything-k8s-resources")
 
         assert auth["url"] == "my.reg/everything-k8s-resources"

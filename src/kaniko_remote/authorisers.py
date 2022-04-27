@@ -68,6 +68,7 @@ class PodOnlyAuth(KanikoAuthoriser):
                     raise ValueError(
                         f"Invalid auth config for '{self.url}'. Env with 'fromSecret' should not contain other values, got: {env}"
                     )
+                continue
             from_config_map = env.pop("from_config_map", None)
             if from_config_map:
                 self._env_from_config_maps.append(from_config_map)
@@ -75,10 +76,12 @@ class PodOnlyAuth(KanikoAuthoriser):
                     raise ValueError(
                         f"Invalid auth config for '{self.url}'. Env with 'fromConfigMap' should not contain other values, got: {env}"
                     )
+                continue
             key = env.pop("key", None)
             value = env.pop("value", None)
             if key and value:
                 self._env_key_values.append((key, value))
+                continue
             raise ValueError(
                 f"Invalid auth config for '{self.url}'. Env must specify one of 'fromSecret', 'fromConfigMap', or both 'key' and 'value'. Instead got: {env}"
             )
@@ -97,13 +100,15 @@ class PodOnlyAuth(KanikoAuthoriser):
                     raise ValueError(
                         f"Invalid auth config for '{self.url}'. Volume with 'fromSecret' should not contain other values, got: {vol}"
                     )
+                continue
             from_config_map = vol.pop("from_config_map", None)
             if from_config_map:
                 self._volumes_from_config_maps.append((from_config_map, mount_path))
-                if len(env) > 0:
+                if len(vol) > 0:
                     raise ValueError(
                         f"Invalid auth config for '{self.url}'. Volume with 'fromConfigMap' should not contain other values, got: {vol}"
                     )
+                continue
             raise ValueError(
                 f"Invalid auth config for '{self.url}'. Volume must specify either 'fromSecret' or 'fromConfigMap'. Instead got: {vol}"
             )
@@ -115,19 +120,19 @@ class PodOnlyAuth(KanikoAuthoriser):
         if self._service_account:
             pod_spec = K8sSpecs.replace_service_account(pod=pod_spec, service_account_name=self._service_account)
 
-        for secret in self._env_from_secrets:
-            pod_spec = K8sSpecs.append_env_from_secret(pod=pod_spec, secret_name=secret)
         for config_map in self._env_from_config_maps:
             pod_spec = K8sSpecs.append_env_from_config_map(pod=pod_spec, config_map_name=config_map)
+        for secret in self._env_from_secrets:
+            pod_spec = K8sSpecs.append_env_from_secret(pod=pod_spec, secret_name=secret)
         for key, value in self._env_key_values:
-            pod_spec = K8sSpecs.append_env_var(pod=pod_spec, key=key, value=value)
+            pod_spec = K8sSpecs.append_env_var(pod=pod_spec, env_var_name=key, env_var_value=value)
 
-        for secret, mount_path in self._volumes_from_secrets:
-            pod_spec = K8sSpecs.append_volume_from_secret(pod=pod_spec, secret_name=secret, mount_path=mount_path)
         for config_map, mount_path in self._volumes_from_config_maps:
             pod_spec = K8sSpecs.append_volume_from_config_map(
                 pod=pod_spec, config_map_name=config_map, mount_path=mount_path
             )
+        for secret, mount_path in self._volumes_from_secrets:
+            pod_spec = K8sSpecs.append_volume_from_secret(pod=pod_spec, secret_name=secret, mount_path=mount_path)
 
         return pod_spec
 
