@@ -75,9 +75,10 @@ class K8sWrapper(AbstractContextManager):
                 )
                 if c.name == container
             ]
-            if len(states) > 1:
+            if len(states) == 1:
+                yield states[0]
+            elif len(states) > 1:
                 raise ValueError(f"Pod '{pod_name}' has more than one container '{container}'")
-            yield states[0]
 
     async def wait_for_container_running_state(
         self, pod_name: str, container: str, timeout_seconds: int
