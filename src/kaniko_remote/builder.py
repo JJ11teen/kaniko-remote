@@ -105,7 +105,7 @@ class Builder(AbstractContextManager):
                 container="setup",
                 local_path=self._local_context,
                 remote_path="/workspace",
-                progress_bar_description="Sending context dir: ",
+                progress_bar_description="[KANIKO-REMOTE] Sending context",
             )
         else:
             logger.debug("Using remote storage for context dir, skipping upload")
