@@ -4,6 +4,7 @@ import os
 import tarfile
 from contextlib import AbstractContextManager
 from math import ceil
+from multiprocessing import context
 from pathlib import Path
 from tempfile import TemporaryFile
 from typing import Generator, Optional
@@ -26,13 +27,14 @@ class K8sWrapper(AbstractContextManager):
     def __init__(
         self,
         kubeconfig: str,
+        context: str,
         namespace: str,
     ) -> None:
         self.kubeconfig = kubeconfig
         self.namespace = namespace
 
     def __enter__(self) -> "K8sWrapper":
-        config.load_kube_config(config_file=self.kubeconfig)
+        config.load_kube_config(config_file=self.kubeconfig, context=context)
         k8s_logging.basicConfig(level=k8s_logging.WARN if logging.root.level > TRACE else k8s_logging.DEBUG)
         self._k8s_api = ApiClient()
         self.v1 = client.CoreV1Api(self._k8s_api)

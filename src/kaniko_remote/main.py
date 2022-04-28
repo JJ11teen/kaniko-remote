@@ -9,6 +9,16 @@ from kaniko_remote.logging import init_logging
 
 
 @click.group()
+@click.option(
+    "-v",
+    "--verbosity",
+    type=click.Choice(
+        ["trace", "debug", "info", "warn", "error", "fatal", "panic"],
+        case_sensitive=False,
+    ),
+    default="info",
+    # help='Log level (trace, debug, info, warn, error, fatal, panic) (default "info")',
+)
 @click.pass_context
 def cli(ctx: click.Context, verbosity: str):
     """
@@ -29,16 +39,6 @@ def cli(ctx: click.Context, verbosity: str):
     help='Name and tag in the "name:tag" format',
     type=str,
 )
-@click.option(
-    "-v",
-    "--verbosity",
-    type=click.Choice(
-        ["trace", "debug", "info", "warn", "error", "fatal", "panic"],
-        case_sensitive=False,
-    ),
-    default="info",
-    # help='Log level (trace, debug, info, warn, error, fatal, panic) (default "info")',
-)
 @click.argument(
     "path",
     type=click.Path(exists=True),
@@ -55,6 +55,7 @@ async def build(ctx: click.Context, path: Path, **kwargs):
     config = Config()
     with K8sWrapper(
         kubeconfig=config.get_kubeconfig(),
+        context=config.get_context(),
         namespace=config.get_namespace(),
     ) as k8s:
         with Builder(

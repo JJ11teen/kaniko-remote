@@ -62,6 +62,9 @@ class Config:
     def get_kubeconfig(self) -> Optional[str]:
         return self.y.get("kubernetes.kubeconfig", None)
 
+    def get_context(self) -> Optional[str]:
+        return self.y.get("kubernetes.context", None)
+
     def get_namespace(self) -> str:
         return self.y.get("kubernetes.namespace", "default")
 
