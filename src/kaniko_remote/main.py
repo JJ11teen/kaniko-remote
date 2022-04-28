@@ -72,7 +72,7 @@ async def build(path: Path, quiet: bool, iidfile: str, **kaniko_args):
     kaniko_args["context"] = path
     config = Config()
 
-    logger.warning(f"Using kaniko-remote to remotely build the specified docker image.")
+    logger.warning(f"Remotely building image on remote k8s cluster (Using config: {config.config_location})")
 
     with K8sWrapper(
         kubeconfig=config.get_kubeconfig(),

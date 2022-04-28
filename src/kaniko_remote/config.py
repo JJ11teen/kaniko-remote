@@ -53,12 +53,11 @@ class Config:
                     'Could not find a kaniko-remote config file, attempting to run with unauthorised registry access. Configure registry authorisation and other builder options with "kaniko-remote config".'
                 )
         if config_location is not None:
-            logger.info(f"Using config file: {config_location}")
-
             with open(config_location, "r") as yaml_file:
                 parser = YAML(typ="safe")
                 self.y = DeflatableDict(d=parser.load(yaml_file))
             logger.debug(f"Parsed config as: {self.y}")
+        self.config_location = config_location
 
     def _snake_caseify_dict(self, d: dict) -> dict:
         return {self._snake_caseify_regex.sub("_", k).lower(): v for k, v in d.items()}
