@@ -1,9 +1,9 @@
-import base64
 import json
 import os
 from contextlib import AbstractContextManager
 from signal import SIGINT
 from tempfile import TemporaryDirectory
+from time import time
 from typing import Callable, List, Optional
 from urllib.parse import urlparse
 
@@ -24,15 +24,16 @@ class Builder(AbstractContextManager):
         **kaniko_kwargs,
     ) -> None:
         self.k8s = k8s_wrapper
-
-        self.pod_name = None
         self.stopped = False
 
-        local_context = self._parse_local_context(kaniko_kwargs["context"])
-        pod_spec = K8sSpecs.generate_pod_spec(**config.get_builder_options())
-        urls_to_auth = [kaniko_kwargs["destination"]]
+        builder_options = config.get_builder_options()
+        self._pod_start_timeout_seconds = builder_options.pop("pod_start_timeout_seconds")
+        pod_spec = K8sSpecs.generate_pod_spec(**builder_options)
 
+        local_context = self._parse_local_context(kaniko_kwargs["context"])
+        urls_to_auth = list(kaniko_kwargs["destinations"])
         if local_context:
+            kaniko_kwargs.pop("context")
             pod_spec = K8sSpecs.mount_context_for_exec_transfer(pod_spec)
             dockerfile = kaniko_kwargs.get("dockerfile", None)
             if dockerfile and not os.path.isfile(f"{local_context}/{dockerfile}"):
@@ -41,14 +42,18 @@ class Builder(AbstractContextManager):
             urls_to_auth.append(kaniko_kwargs["context"])
 
         authorisers: List[KanikoAuthoriser] = get_matching_authorisers(urls=urls_to_auth, config=config)
-        docker_config = {}
-        pod_spec = K8sSpecs.set_kaniko_args(pod_spec, **kaniko_kwargs)
+        pod_spec = K8sSpecs.set_kaniko_args(
+            pod=pod_spec,
+            preparsed_args=config.get_builder_options().pop("kaniko_args", []),
+            **kaniko_kwargs,
+        )
 
+        docker_config = {}
         for auth in authorisers:
             docker_config = auth.append_auth_to_docker_config(docker_config=docker_config)
             pod_spec = auth.append_auth_to_pod(pod_spec=pod_spec)
 
-        logger.info(f"Configuring builder with auth for {[a.url for a in authorisers]}")
+        logger.info(f"Configured builder with auth profiles: {''.join([a.url for a in authorisers])}.")
         logger.debug(f"Generated docker config for builder: {docker_config}")
         logger.debug(f"Generated pod spec for builder: {pod_spec}")
 
@@ -78,50 +83,59 @@ class Builder(AbstractContextManager):
         return False
 
     def _create(self) -> None:
-        logger.info(f"Creating builder pod in '{self.k8s.namespace}' namespace.")
         pod_spec = self.k8s.create_pod(body=self._pod_spec)
         self.pod_name = pod_spec.metadata.name
-        logger.info(f"Created builder pod '{self.k8s.namespace}/{self.pod_name}'.")
-        logger.debug(f"Created builder pod with spec: {pod_spec}")
+        logger.debug(f"Initialised builder pod with spec: {pod_spec}")
 
     def _destroy(self):
         if self.pod_name:
-            logger.warn(f"Deleting pod {self.pod_name}")
+            logger.info(f"Deleting pod {self.pod_name}")
             self.k8s.delete_pod(self.pod_name)
-            logger.warn(f"Deleted pod {self.pod_name}")
+            logger.info(f"Deleted pod {self.pod_name}")
         self.stopped = True
 
-    async def setup(self) -> None:
-        await self.k8s.wait_for_container(pod=self.pod_name, container="setup")
+    async def setup(self) -> str:
+        await self.k8s.wait_for_container_running_state(
+            pod_name=self.pod_name, container="setup", timeout_seconds=self._pod_start_timeout_seconds
+        )
 
         if self._local_context:
             await self.k8s.upload_local_dir_to_container(
-                pod=self.pod_name,
+                pod_name=self.pod_name,
                 container="setup",
                 local_path=self._local_context,
                 remote_path="/workspace",
                 progress_bar_description="Sending context dir: ",
             )
         else:
-            logger.info("Using remote storage for context dir, skipping upload")
+            logger.debug("Using remote storage for context dir, skipping upload")
 
         with TemporaryDirectory() as config_dir:
             with open(config_dir + "/config.json", "w") as f:
                 json.dump(self._docker_config, f)
 
             await self.k8s.upload_local_dir_to_container(
-                pod=self.pod_name,
+                pod_name=self.pod_name,
                 container="setup",
                 local_path=config_dir,
                 remote_path="/kaniko/.docker",
             )
 
-        logger.info(f"Setup builder pod {self.pod_name}.")
+        return self.pod_name
 
-    async def build(self, log_callback: Callable[[str], None]) -> None:
-        logger.info("Connecting to logs...")
-        await self.k8s.wait_for_container(pod=self.pod_name, container="builder", timeout=10)
-        async for line in self.k8s.tail_container(pod=self.pod_name, container="builder"):
+    async def build(self, log_callback: Callable[[str], None]) -> str:
+        await self.k8s.wait_for_container_running_state(pod_name=self.pod_name, container="builder", timeout_seconds=10)
+        async for line in self.k8s.tail_container(pod_name=self.pod_name, container="builder"):
             log_callback(line)
             if self.stopped:
                 return
+
+        terminated = await self.k8s.wait_for_container_terminated_state(
+            pod_name=self.pod_name, container="builder", timeout_seconds=10
+        )
+
+        if terminated.exit_code == 0:
+            # This will be the newly build image sha at this point
+            return terminated.message
+        else:
+            raise ValueError(f"Kaniko failed to build and/or push image: {terminated}")

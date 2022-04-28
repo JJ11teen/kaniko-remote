@@ -22,13 +22,14 @@ class K8sSpecs:
     @classmethod
     def generate_pod_spec(
         cls,
-        instance_id: str,
+        name: str,
         cpu: str,
         memory: str,
         kaniko_image: str,
         setup_image: str,
         additional_labels: dict,
         additional_annotations: dict,
+        **kwargs,
     ) -> V1Pod:
         docker_config_volume_mounts = [V1VolumeMount(name="config", mount_path="/kaniko/.docker")]
 
@@ -45,7 +46,7 @@ class K8sSpecs:
             **{
                 "app.kubernetes.io/name": "kaniko-remote",
                 "app.kubernetes.io/component": "builder",
-                "kaniko-remote/instance": instance_id,
+                "kaniko-remote/builder-name": name,
             },
         }
         annotations = {
@@ -59,7 +60,7 @@ class K8sSpecs:
             api_version="v1",
             kind="Pod",
             metadata=dict(
-                generateName=f"kaniko-remote-{instance_id}-",
+                generateName=f"kaniko-remote-{name}-",
                 labels=labels,
                 annotations=annotations,
             ),
@@ -101,19 +102,39 @@ class K8sSpecs:
         return pod
 
     @classmethod
-    def set_kaniko_args(cls, pod: V1Pod, **kwargs) -> V1Pod:
-        required_args = ["context", "destination"]
+    def set_kaniko_args(cls, pod: V1Pod, preparsed_args: List[str], **kwargs) -> V1Pod:
+        required_args = ["destinations"]
 
         for required_arg in required_args:
             if required_arg not in kwargs:
                 raise ValueError(f"Missing required kaniko argument --{required_arg}")
 
         # Start with defaults which may be overriden
-        args = {"dockerfile": "."}
+        args = {
+            "dockerfile": "Dockerfile",
+            "digest-file": "/dev/termination-log",
+        }
+
+        # Pop multi-args so they can be expanded later
+        destinations = kwargs.pop("destinations")
+        build_args = kwargs.pop("build_args", ())
+        labels = kwargs.pop("labels", ())
+
         args.update(kwargs)
+        args = [f"--{k}={v}" for k, v in args.items() if v is not None]
+
+        args.extend(preparsed_args)
+
+        for d in destinations:
+            args.append(f"--destination={d}")
+        for ba in build_args:
+            args.append("--build-arg")
+            args.append(ba)
+        for l in labels:
+            args.append(f"--label={l}")
 
         pod.spec.containers[0].command = None
-        pod.spec.containers[0].args = [f'--{k}="{v}"' for k, v in args.items()]
+        pod.spec.containers[0].args = args
         return pod
 
     @classmethod

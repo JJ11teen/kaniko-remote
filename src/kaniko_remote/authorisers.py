@@ -27,7 +27,7 @@ def get_matching_authorisers(urls: List[str], config: Config) -> List[KanikoAuth
     authoriser_names = config.list_always_mount_authorisers() + [
         an for an in config.list_all_authorisers() if any([u.startswith(an) for u in urls])
     ]
-    authoriser_configs = [config.get_authoriser_options(an) for an in authoriser_names]
+    authoriser_configs = [config.get_authoriser_options(an) for an in set(authoriser_names)]
 
     service_accounts = [c["service_account"] for c in authoriser_configs if c["service_account"] is not None]
     if len(set(service_accounts)) > 1:

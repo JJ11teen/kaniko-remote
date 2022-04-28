@@ -11,13 +11,17 @@ from kaniko_remote.logging import getLogger
 logger = getLogger(__name__)
 
 _default_builder_options = dict(
-    instance_id=getpass.getuser(),
+    name=getpass.getuser(),
     cpu="1",
     memory="1G",
     kaniko_image="gcr.io/kaniko-project/executor:latest",
     setup_image="busybox:stable",
     additional_labels={},
     additional_annotations={},
+    kaniko_args=[
+        "--use-new-run",
+    ],
+    pod_start_timeout_seconds=5 * 60,
 )
 
 _default_auth_options = dict(

@@ -1,11 +1,14 @@
 from pathlib import Path
+from time import time
 
 import asyncclick as click
 
 from kaniko_remote.builder import Builder
 from kaniko_remote.config import Config
 from kaniko_remote.k8s.k8s import K8sWrapper
-from kaniko_remote.logging import init_logging
+from kaniko_remote.logging import getLogger, init_logging
+
+logger = getLogger(__name__)
 
 
 @click.group()
@@ -16,7 +19,7 @@ from kaniko_remote.logging import init_logging
         ["trace", "debug", "info", "warn", "error", "fatal", "panic"],
         case_sensitive=False,
     ),
-    default="info",
+    default="warn",
     # help='Log level (trace, debug, info, warn, error, fatal, panic) (default "info")',
 )
 @click.pass_context
@@ -30,29 +33,47 @@ def cli(ctx: click.Context, verbosity: str):
     init_logging(level=verbosity)
 
 
-@cli.command()
+@cli.command(context_settings=dict(ignore_unknown_options=True, allow_extra_args=True))
+async def push(**kwargs):
+    logger.warning("This command is a NOOP as kaniko-remote pushes the image at the end of the build step.")
+
+
+@cli.command(context_settings=dict(allow_interspersed_args=True))
 @click.option(
     "-t",
     "--tag",
-    "destination",
+    "destinations",
     required=True,
+    multiple=True,
     help='Name and tag in the "name:tag" format',
     type=str,
 )
-@click.argument(
-    "path",
-    type=click.Path(exists=True),
+@click.option(
+    "-f",
+    "--file",
+    "dockerfile",
+    help='Path to the dockerfile within context (default "./Dockerfile")',
+    type=str,
 )
-@click.pass_context
-async def build(ctx: click.Context, path: Path, **kwargs):
+@click.option("--build-arg", "build_args", help="Set build-time ARG variables", type=str, multiple=True)
+@click.option("--label", "labels", help="Set metadata for an image", type=str, multiple=True)
+@click.option("--target", help="Set the target build stage to build.", type=str)
+@click.option("--platform", "customPlatform", help="Set platform if server is multi-platform capable", type=str)
+@click.option("-q", "--quiet", help="Suppress the build output and print image ID on success", type=bool)
+@click.option("--iidfile", help="Write the image ID to the file", type=str)
+@click.argument("path", type=click.Path(exists=True, dir_okay=True, file_okay=False))
+async def build(path: Path, quiet: bool, iidfile: str, **kaniko_args):
     """
     Build an image from a Dockerfile on a k8s cluster using kaniko
 
     This tool can be explicitly invoked as 'kaniko-remote'.
     If optionally installed, this tool can additionally be invoked as 'docker'.
     """
-    kwargs.update(dict(zip(ctx.args[::2], ctx.args[1::2])))
+    kaniko_args["context"] = path
     config = Config()
+
+    logger.warning(f"Using kaniko-remote to remotely build the specified docker image.")
+
     with K8sWrapper(
         kubeconfig=config.get_kubeconfig(),
         context=config.get_context(),
@@ -61,32 +82,18 @@ async def build(ctx: click.Context, path: Path, **kwargs):
         with Builder(
             k8s_wrapper=k8s,
             config=config,
-            context=path,
-            **kwargs,
+            **kaniko_args,
         ) as builder:
-            await builder.setup()
-            await builder.build(click.echo)
 
-    # Options:
-    #     --add-host list           Add a custom host-to-IP mapping (host:ip)
-    #     --build-arg list          Set build-time variables
-    #     --cache-from strings      Images to consider as cache sources
-    #     --disable-content-trust   Skip image verification (default true)
-    # -f, --file string             Name of the Dockerfile (Default is 'PATH/Dockerfile')
-    #     --iidfile string          Write the image ID to the file
-    #     --isolation string        Container isolation technology
-    #     --label list              Set metadata for an image
-    #     --network string          Set the networking mode for the RUN instructions during build (default "default")
-    #     --no-cache                Do not use cache when building the image
-    # -o, --output stringArray      Output destination (format: type=local,dest=path)
-    #     --platform string         Set platform if server is multi-platform capable
-    #     --progress string         Set type of progress output (auto, plain, tty). Use plain to show container
-    #                                 output (default "auto")
-    #     --pull                    Always attempt to pull a newer version of the image
-    # -q, --quiet                   Suppress the build output and print image ID on success
-    #     --secret stringArray      Secret file to expose to the build (only if BuildKit enabled):
-    #                                 id=mysecret,src=/local/secret
-    #     --ssh stringArray         SSH agent socket or keys to expose to the build (only if BuildKit enabled)
-    #                                 (format: default|<id>[=<socket>|<key>[,<key>]])
-    # -t, --tag list                Name and optionally a tag in the 'name:tag' format
-    #     --target string           Set the target build stage to build.
+            logger.warning(f"Initialised builder {k8s.namespace}/{builder.pod_name}")
+
+            start_time = time()
+            await builder.setup()
+            setup_time = time() - start_time
+            logger.warning(f"Setup builder {builder.pod_name} in {setup_time:.2f} seconds, streaming logs:")
+
+            start_time = time()
+            image_sha = await builder.build(logger.warning)  # click.echo
+            setup_time = time() - start_time
+    logger.warning(f"Built image with digest {image_sha} in {setup_time:.2f} seconds")
+    logger.warning(f"Note that this newly built image has not been pulled to this machine")

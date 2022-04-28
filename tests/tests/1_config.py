@@ -47,7 +47,7 @@ class ConfigTests:
         assert config.get_namespace() == "default"
 
         builder = config.get_builder_options()
-        assert builder["instance_id"] == getpass.getuser()
+        assert builder["name"] == getpass.getuser()
         assert builder["cpu"] == "1"
         assert builder["memory"] == "1G"
         assert builder["kaniko_image"] == "gcr.io/kaniko-project/executor:latest"
@@ -64,7 +64,7 @@ class ConfigTests:
         assert len(test_config_builder.list_all_authorisers()) == 0
 
         builder = test_config_builder.get_builder_options()
-        assert builder["instance_id"] == "tests"
+        assert builder["name"] == "tests"
         assert builder["cpu"] == "200m"
         assert builder["memory"] == "200m"
         assert builder["kaniko_image"] == "mycool.registry/kaniko-image"

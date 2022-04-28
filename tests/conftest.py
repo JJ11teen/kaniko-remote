@@ -38,7 +38,7 @@ def remove_configs(local_config_location, user_config_location):
 @pytest.fixture()
 def base_pod() -> V1Pod:
     return K8sSpecs.generate_pod_spec(
-        instance_id="regular-instance",
+        name="regular-instance",
         cpu="1",
         memory="1",
         kaniko_image="kaniko",

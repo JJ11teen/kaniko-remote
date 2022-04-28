@@ -12,7 +12,7 @@ from kaniko_remote.k8s.specs import K8sSpecs
 class K8sSpecTests:
     def test_generate_pod_spec(self):
         pod = K8sSpecs.generate_pod_spec(
-            instance_id="my-cool-instance-id-000",
+            name="my-cool-instance-id-000",
             cpu="800m",
             memory="2G",
             kaniko_image="kaniko",
@@ -57,7 +57,7 @@ class K8sSpecTests:
 
     def test_generate_pod_spec_labels_and_annotations(self):
         pod = K8sSpecs.generate_pod_spec(
-            instance_id="instance-with-additional-labels",
+            name="instance-with-additional-labels",
             cpu="800m",
             memory="2G",
             kaniko_image="kaniko",
@@ -84,7 +84,7 @@ class K8sSpecTests:
         }
 
         pod_with_default_labels = K8sSpecs.generate_pod_spec(
-            instance_id="instance-with-default-labels",
+            name="instance-with-default-labels",
             cpu="800m",
             memory="2G",
             kaniko_image="kaniko",

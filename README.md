@@ -24,12 +24,14 @@ builder:
   instanceId: lucas
   cpu: 1
   memory: 1G
-  # kanikoImage: ""
-  # setupImage: ""
-  # additionalLabels:
-  #   yes: hello
-  # additionalAnnotations:
-  #   why: not
+  kanikoImage: ""
+  setupImage: ""
+  additionalLabels:
+    yes: hello
+  additionalAnnotations:
+    why: not
+  kanikoArgs:
+  - --use-new-run
 auth:
   - url: eliiza.azurecr.io
     mount: always
@@ -40,4 +42,21 @@ auth:
     type: pod-only
   - url: s3://kaniko-bucket
   - url: https://myaccount.blob.core.windows.net/container
+```
+
+```yaml
+kubernetes:
+  namespace: kaniko-remote
+builder:
+  instanceId: lucas
+  cpu: 1
+  memory: 1G
+  kanikoArgs:
+  - --use-new-run
+auth:
+  - url: eliiza.azurecr.io
+    mount: always
+    type: acr
+    env:
+    - fromSecret: eliiza-azurecr-push-sp
 ```

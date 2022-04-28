@@ -4,16 +4,19 @@ import os
 import tarfile
 from contextlib import AbstractContextManager
 from math import ceil
-from multiprocessing import context
 from pathlib import Path
 from tempfile import TemporaryFile
-from typing import Generator, Optional
+from typing import Generator, Optional, Tuple
 
 from anyio import sleep
 from kubernetes import client, config
 from kubernetes.client.api_client import ApiClient
 from kubernetes.client.configuration import logging as k8s_logging
-from kubernetes.client.models import V1Pod
+from kubernetes.client.models import (
+    V1ContainerStateRunning,
+    V1ContainerStateTerminated,
+    V1Pod,
+)
 from kubernetes.stream import stream
 from kubernetes.watch import Watch
 from tqdm import tqdm
@@ -31,10 +34,11 @@ class K8sWrapper(AbstractContextManager):
         namespace: str,
     ) -> None:
         self.kubeconfig = kubeconfig
+        self.context = context
         self.namespace = namespace
 
     def __enter__(self) -> "K8sWrapper":
-        config.load_kube_config(config_file=self.kubeconfig, context=context)
+        config.load_kube_config(config_file=self.kubeconfig, context=self.context)
         k8s_logging.basicConfig(level=k8s_logging.WARN if logging.root.level > TRACE else k8s_logging.DEBUG)
         self._k8s_api = ApiClient()
         self.v1 = client.CoreV1Api(self._k8s_api)
@@ -47,50 +51,62 @@ class K8sWrapper(AbstractContextManager):
     def create_pod(self, body: V1Pod) -> V1Pod:
         return self.v1.create_namespaced_pod(namespace=self.namespace, body=body)
 
-    def read_pod(self, pod: str) -> V1Pod:
-        return self.v1.read_namespaced_pod(namespace=self.namespace, name=pod)
+    def read_pod(self, pod_name: str) -> V1Pod:
+        return self.v1.read_namespaced_pod(namespace=self.namespace, name=pod_name)
 
-    def delete_pod(self, pod: str) -> V1Pod:
-        return self.v1.delete_namespaced_pod(namespace=self.namespace, name=pod)
+    def delete_pod(self, pod_name: str) -> V1Pod:
+        return self.v1.delete_namespaced_pod(namespace=self.namespace, name=pod_name)
 
-    async def wait_for_container(self, pod: str, container: str, timeout: int = 30 * 60):
-        # Firstly we check that a container of the given name is expected
-        response = self.read_pod(pod=pod)
-        spec_containers = [
-            c for c in (response.spec.containers) + (response.spec.init_containers or []) if c.name == container
-        ]
-        if len(spec_containers) != 1:
-            raise ValueError(f"Pod '{pod}' does not have a specific container '{container}'")
-
-        # Then we poll for state
-        count = 0
-        while count < timeout:
-            count += 1
+    def _watch_container_states(self, pod_name: str, container: str, timeout_seconds: int):
+        w = Watch()
+        for event in w.stream(
+            self.v1.list_namespaced_pod,
+            namespace=self.namespace,
+            field_selector=f"metadata.name={pod_name}",
+            timeout_seconds=timeout_seconds,
+        ):
+            pod_status = event["object"].status
             states = [
                 c.state
                 for c in (
-                    (response.status.container_statuses or [])
-                    + (response.status.ephemeral_container_statuses or [])
-                    + (response.status.init_container_statuses or [])
+                    (pod_status.container_statuses or [])
+                    + (pod_status.ephemeral_container_statuses or [])
+                    + (pod_status.init_container_statuses or [])
                 )
                 if c.name == container
             ]
-            if len(states) == 1:
-                logger.debug(f"Waiting for container '{container}' in pod '{pod}', current state: {states[0]}")
-                # Note this will be true if the container is either running or terminated
-                if states[0].waiting is None:
-                    break
-            await sleep(1)
-            response = self.read_pod(pod=pod)
+            if len(states) > 1:
+                raise ValueError(f"Pod '{pod_name}' has more than one container '{container}'")
+            yield states[0]
 
-    async def tail_container(self, pod: str, container: str) -> Generator[str, None, None]:
+    async def wait_for_container_running_state(
+        self, pod_name: str, container: str, timeout_seconds: int
+    ) -> V1ContainerStateRunning:
+        for state in self._watch_container_states(pod_name, container, timeout_seconds):
+            logger.trace(
+                f"Waiting for container '{container}' in pod '{pod_name}' to reach running state, current state: {state}"
+            )
+            if state.running is not None:
+                return state.running
+
+    async def wait_for_container_terminated_state(
+        self, pod_name: str, container: str, timeout_seconds: int
+    ) -> V1ContainerStateTerminated:
+        for state in self._watch_container_states(pod_name, container, timeout_seconds):
+            logger.trace(
+                f"Waiting for container '{container}' in pod '{pod_name}' to reach terminated state, current state: {state}"
+            )
+            if state.terminated is not None:
+                return state.terminated
+
+    async def tail_container(self, pod_name: str, container: str) -> Generator[str, None, None]:
         # Watch doesn't seem to use websockets, are we better off using stream here?
         # (stream does use websockets)
         w = Watch()
         for line in w.stream(
             self.v1.read_namespaced_pod_log,
             namespace=self.namespace,
-            name=pod,
+            name=pod_name,
             container=container,
         ):
             # We yield execution here so that this watch can be interupted (eg by ctrl-c)
@@ -99,16 +115,16 @@ class K8sWrapper(AbstractContextManager):
 
     async def upload_local_dir_to_container(
         self,
-        pod: str,
+        pod_name: str,
         container: str,
         local_path: Path,
         remote_path: Path,
         progress_bar_description: Optional[str] = None,
-    ) -> None:
+    ) -> float:
         s = stream(
             self.v1.connect_get_namespaced_pod_exec,
             namespace=self.namespace,
-            name=pod,
+            name=pod_name,
             command=["sh"],
             container=container,
             stdin=True,
@@ -128,6 +144,7 @@ class K8sWrapper(AbstractContextManager):
                 desc=progress_bar_description,
                 total=ceil(tar_size / 100) + 4,
                 disable=progress_bar_description is None,
+                ascii=True,
             )
 
             # TODO: batch packets more efficiently than just per line
