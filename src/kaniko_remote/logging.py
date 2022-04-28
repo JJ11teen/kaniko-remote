@@ -6,8 +6,7 @@ from logging import getLogger as getDefaultLogger
 from typing import Union
 
 TRACE = 5
-_log_format = "[KANIKO-REMOTE] %(asctime)s | %(message)s"
-_datetime_format = "%H:%M:%S"
+_log_format = "[KANIKO-REMOTE] %(message)s"
 
 logging.addLevelName(5, "TRACE")
 
@@ -33,8 +32,8 @@ def init_logging(level: Union[str, int]):
         level = logging.getLevelName(level_str)
         if "Level" in level_str:
             raise ValueError(f"Unknown logging level '{level_str}'")
-        logging.basicConfig(level=level, format=_log_format, datefmt=_datetime_format)
+        logging.basicConfig(level=level, format=_log_format)
         logger.debug(f"Logging initialised to level '{level_str}'")
     else:
-        logging.basicConfig(level=level, format=_log_format, datefmt=_datetime_format)
+        logging.basicConfig(level=level, format=_log_format)
         logger.debug(f"Logging initialised to level '{level}'")
