@@ -29,7 +29,8 @@ class Builder(AbstractContextManager):
         self.stopped = False
 
         builder_options = config.get_builder_options()
-        self._pod_start_timeout_seconds = builder_options.pop("pod_start_timeout_seconds")
+        self._pod_start_timeout = builder_options.pop("pod_start_timeout")
+        self._pod_transfer_packet_size = builder_options.pop("pod_transfer_packet_size")
         pod_spec = K8sSpecs.generate_pod_spec(**builder_options)
 
         local_context = self._parse_local_context(kaniko_kwargs["context"])
@@ -116,6 +117,7 @@ class Builder(AbstractContextManager):
                 local_files=[f"{config_dir}/config.json"],
                 remote_path="/kaniko/.docker",
                 relative_local_root=config_dir,
+                packet_size=self._pod_transfer_packet_size,
             )
 
         return self.pod_name
@@ -139,6 +141,7 @@ class Builder(AbstractContextManager):
             remote_path="/workspace",
             relative_local_root=self._local_context,
             progress_bar_description="[KANIKO-REMOTE] Sending context",
+            packet_size=self._pod_transfer_packet_size,
         )
 
     async def build(self, log_callback: Callable[[str], None]) -> str:

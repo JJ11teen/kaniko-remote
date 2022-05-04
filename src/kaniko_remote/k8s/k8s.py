@@ -157,6 +157,7 @@ class K8sWrapper(AbstractContextManager):
         remote_path: Path,
         relative_local_root: Path,
         progress_bar_description: Optional[str] = None,
+        packet_size: int = 9e3,
     ) -> float:
         s = stream(
             self.v1.connect_get_namespaced_pod_exec,
@@ -173,19 +174,22 @@ class K8sWrapper(AbstractContextManager):
         remote_temp_filename = uuid4().hex
         with TemporaryFile() as tar_buffer:
             with tarfile.open(fileobj=tar_buffer, mode="w:gz") as tar:
+                file_count = 0
                 for local_file in local_files:
                     if relative_local_root:
                         internal_tar_path = f"/{os.path.relpath(local_file, relative_local_root)}"
                     else:
                         internal_tar_path = local_file
-                    logger.warning(f"Including file in transfer to pod: {local_file}")
+                    logger.debug(f"Including file in transfer to pod: {local_file}")
                     tar.add(local_file, arcname=internal_tar_path)
+                    file_count += 1
+                logger.info(f"Including {file_count} files in transfer to pod")
 
             tar_buffer.seek(0)
             tar_size = os.path.getsize(tar_buffer.name)
             progress = tqdm(
                 desc=progress_bar_description,
-                total=ceil(tar_size / 100) + 4,
+                total=ceil(tar_size / packet_size) + 4,
                 disable=progress_bar_description is None,
                 ascii=True,
             )
@@ -195,7 +199,7 @@ class K8sWrapper(AbstractContextManager):
                 yield f"cat <<EOF > /tmp/{remote_temp_filename}.tar.gz.b64"
                 while tar_buffer.peek():
                     # TODO: find good default for packet size, make configurable
-                    data = tar_buffer.read(int(100))
+                    data = tar_buffer.read(packet_size)
                     b64_str = str(base64.b64encode(data), "utf-8")
                     yield b64_str
                 yield "EOF"

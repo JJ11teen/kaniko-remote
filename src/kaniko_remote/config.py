@@ -21,7 +21,8 @@ _default_builder_options = dict(
     kaniko_args=[
         "--use-new-run",
     ],
-    pod_start_timeout_seconds=5 * 60,
+    pod_start_timeout=5 * 60,
+    pod_transfer_packet_size=9e3,
 )
 
 _default_auth_options = dict(
