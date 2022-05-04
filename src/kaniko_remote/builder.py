@@ -1,11 +1,13 @@
 import json
 import os
 from contextlib import AbstractContextManager
+from glob import iglob
 from signal import SIGINT
 from tempfile import TemporaryDirectory
-from time import time
 from typing import Callable, List, Optional
 from urllib.parse import urlparse
+
+import pathspec
 
 from kaniko_remote.authorisers import KanikoAuthoriser, get_matching_authorisers
 from kaniko_remote.config import Config
@@ -100,13 +102,7 @@ class Builder(AbstractContextManager):
         )
 
         if self._local_context:
-            await self.k8s.upload_local_dir_to_container(
-                pod_name=self.pod_name,
-                container="setup",
-                local_path=self._local_context,
-                remote_path="/workspace",
-                progress_bar_description="[KANIKO-REMOTE] Sending context",
-            )
+            self._transfer_local_build_context()
         else:
             logger.debug("Using remote storage for context dir, skipping upload")
 
@@ -117,11 +113,33 @@ class Builder(AbstractContextManager):
             await self.k8s.upload_local_dir_to_container(
                 pod_name=self.pod_name,
                 container="setup",
-                local_path=config_dir,
+                local_files=[f"{config_dir}/config.json"],
                 remote_path="/kaniko/.docker",
+                relative_local_root=config_dir,
             )
 
         return self.pod_name
+
+    async def _transfer_local_build_context(self):
+
+        build_context_paths = iglob("**", recursive=True, root_dir=self._local_context)
+
+        # Filter with dockerignore if exists
+        try:
+            with open(os.path.join(self._local_context, ".dockerignore"), "r") as ignore_file:
+                spec = pathspec.PathSpec.from_lines("gitwildmatch", ignore_file)
+            build_context_paths = (p for p in build_context_paths if not spec.match_file(p))
+        except FileNotFoundError:
+            pass
+
+        await self.k8s.upload_local_dir_to_container(
+            pod_name=self.pod_name,
+            container="setup",
+            local_files=build_context_paths,
+            remote_path="/workspace",
+            relative_local_root=self._local_context,
+            progress_bar_description="[KANIKO-REMOTE] Sending context",
+        )
 
     async def build(self, log_callback: Callable[[str], None]) -> str:
         await self.k8s.wait_for_container_running_state(pod_name=self.pod_name, container="builder", timeout_seconds=10)

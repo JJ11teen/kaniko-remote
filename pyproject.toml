@@ -28,6 +28,7 @@ dependencies = [
     "tqdm>=4",
     "kubernetes>=22.6",
     "deflatable-dict",
+    "pathspec>=0.9"
 ]
 dynamic = ["version"]
 

@@ -49,10 +49,6 @@ kubernetes:
   namespace: kaniko-remote
 builder:
   instanceId: lucas
-  cpu: 1
-  memory: 1G
-  kanikoArgs:
-  - --use-new-run
 auth:
   - url: eliiza.azurecr.io
     mount: always
@@ -60,3 +56,9 @@ auth:
     env:
     - fromSecret: eliiza-azurecr-push-sp
 ```
+
+## License
+
+kaniko-remote is licensed under the MIT license
+
+Dependencies with other licenses are included under `/docs/3rd_party_licenses`
