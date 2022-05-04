@@ -8,6 +8,7 @@ from math import ceil
 from pathlib import Path
 from tempfile import TemporaryFile
 from typing import Generator, Iterator, Optional
+from unicodedata import name
 from uuid import uuid4
 
 from anyio import sleep
@@ -31,26 +32,39 @@ logger = getLogger(__name__)
 class K8sWrapper(AbstractContextManager):
     def __init__(
         self,
-        kubeconfig: str,
-        context: str,
-        namespace: str,
+        kubeconfig: str = None,
+        context: str = None,
+        namespace: str = None,
     ) -> None:
         self.kubeconfig = kubeconfig
         self.context = context
-        self.namespace = namespace
+
+        self._incluster = "KUBERNETES_SERVICE_HOST" in os.environ
+        if self._incluster and self.kubeconfig or self.context:
+            logger.warning(
+                f"kubernetes.kubeconfig and kubernetes.context are ignored when running in a kubernetes cluster"
+            )
+
+        if namespace:
+            # If namespace explicitly set, use that
+            self.namespace = namespace
+        elif self._incluster:
+            # If namespace not specified explicitly and we are in cluster,
+            # use current sa namespace:
+            self.namespace = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace").read()
+        else:
+            # If namespace not specific explicitly and we are not in cluster
+            self.namespace = "default"
 
     def __enter__(self) -> "K8sWrapper":
-        # Workaround for: https://github.com/kubernetes-client/python/issues/1787
-        self._attempt_kubectl_login(self.kubeconfig, self.context, self.namespace)
-
-        if "KUBERNETES_SERVICE_HOST" in os.environ:
-            if self.kubeconfig or self.context:
-                logger.warning(
-                    f"kubernetes.kubeconfig and kubernetes.context are ignored when running in a kubernetes cluster"
-                )
+        if self._incluster:
             config.load_incluster_config()
         else:
+            # Workaround for: https://github.com/kubernetes-client/python/issues/1787
+            self._attempt_kubectl_login(self.kubeconfig, self.context, self.namespace)
+
             config.load_kube_config(config_file=self.kubeconfig, context=self.context)
+
         k8s_logging.basicConfig(level=k8s_logging.WARN if logging.root.level > TRACE else k8s_logging.DEBUG)
         self._k8s_api = ApiClient()
         self.v1 = client.CoreV1Api(self._k8s_api)

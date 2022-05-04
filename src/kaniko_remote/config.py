@@ -10,12 +10,6 @@ from kaniko_remote.logging import getLogger
 
 logger = getLogger(__name__)
 
-_default_kubernetes_options = dict(
-    kubeconfig=None,
-    context=None,
-    namespace="default",
-)
-
 _default_builder_options = dict(
     name=getpass.getuser(),
     cpu="1",
@@ -70,7 +64,7 @@ class Config:
         return {self._snake_caseify_regex.sub("_", k).lower(): v for k, v in d.items()}
 
     def get_kubernetes_options(self) -> dict:
-        return {**_default_kubernetes_options, **(self._snake_caseify_dict(self.y.get("kubernetes", {})))}
+        return self._snake_caseify_dict(self.y.get("kubernetes", {}))
 
     def get_tag_options(self):
         return self.y.get("tag", {})
