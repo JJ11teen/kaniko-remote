@@ -72,8 +72,8 @@ class Config:
     def get_kubernetes_options(self) -> dict:
         return {**_default_kubernetes_options, **(self._snake_caseify_dict(self.y.get("kubernetes", {})))}
 
-    def get_tag_prepend(self):
-        return self.y.get("tag.prepend", None)
+    def get_tag_options(self):
+        return self.y.get("tag", {})
 
     def get_builder_options(self) -> dict:
         return {**_default_builder_options, **(self._snake_caseify_dict(self.y.get("builder", {})))}

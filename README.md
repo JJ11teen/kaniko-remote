@@ -36,8 +36,9 @@ builder:
   podStartTimeout: 300 # In seconds, default 5 mins
   podTransferPacketSize: 14e3 # In bytes, default 14kB
 tag:
-  fixed: eliiza.azurecr.io/specific-image:v1
-  prepend: eliiza.azurecr.io/dataiku
+  default: eliiza.azurecr.io/some-default-image
+  static: eliiza.azurecr.io/specific-image:v1
+  prefix: eliiza.azurecr.io/dataiku
 auth: # Default is to have none of these
   - url: eliiza.azurecr.io
     mount: always # Defaults to only mounting each auth into the builder if the url matches the tag being built

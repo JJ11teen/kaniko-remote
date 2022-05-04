@@ -6,7 +6,7 @@ import pytest
 from kubernetes.client.models import V1Container, V1Pod
 
 from kaniko_remote import __version__ as kaniko_version
-from kaniko_remote.k8s.specs import K8sSpecs
+from kaniko_remote.k8s_specs import K8sSpecs
 
 
 class K8sSpecTests:

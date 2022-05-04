@@ -5,8 +5,9 @@ import asyncclick as click
 
 from kaniko_remote.builder import Builder
 from kaniko_remote.config import Config
-from kaniko_remote.k8s.k8s import K8sWrapper
+from kaniko_remote.k8s import K8sWrapper
 from kaniko_remote.logging import getLogger, init_logging
+from kaniko_remote.tagger import Tagger
 
 logger = getLogger(__name__)
 
@@ -74,8 +75,8 @@ async def build(path: Path, quiet: bool, iidfile: str, **kaniko_args):
 
     logger.warning(f"Remotely building image on remote k8s cluster (Using config: {config.config_location})")
 
-    pre_tag = config.get_tag_prepend()
-    kaniko_args["destinations"] = tuple([f"{pre_tag}/{d}" for d in kaniko_args["destinations"]])
+    tagger = Tagger(config.get_tag_options())
+    kaniko_args["destinations"] = tagger.adjust_tags(kaniko_args["destinations"])
 
     with K8sWrapper(**config.get_kubernetes_options()) as k8s:
         with Builder(

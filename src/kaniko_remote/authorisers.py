@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 from kubernetes.client.models import V1Pod
 
 from kaniko_remote.config import Config
-from kaniko_remote.k8s.specs import K8sSpecs
+from kaniko_remote.k8s_specs import K8sSpecs
 from kaniko_remote.logging import getLogger
 
 logger = getLogger(__name__)
