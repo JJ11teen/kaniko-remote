@@ -29,8 +29,8 @@ class Builder(AbstractContextManager):
         self.stopped = False
 
         builder_options = config.get_builder_options()
-        self._pod_start_timeout = builder_options.pop("pod_start_timeout")
-        self._pod_transfer_packet_size = builder_options.pop("pod_transfer_packet_size")
+        self._pod_start_timeout = int(builder_options.pop("pod_start_timeout"))
+        self._pod_transfer_packet_size = int(builder_options.pop("pod_transfer_packet_size"))
         pod_spec = K8sSpecs.generate_pod_spec(**builder_options)
 
         local_context = self._parse_local_context(kaniko_kwargs["context"])
@@ -99,7 +99,7 @@ class Builder(AbstractContextManager):
 
     async def setup(self) -> str:
         await self.k8s.wait_for_container_running_state(
-            pod_name=self.pod_name, container="setup", timeout_seconds=self._pod_start_timeout_seconds
+            pod_name=self.pod_name, container="setup", timeout_seconds=self._pod_start_timeout
         )
 
         if self._local_context:

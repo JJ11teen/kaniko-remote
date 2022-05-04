@@ -19,9 +19,10 @@ kaniko-remote build -t registry.fish/my/cool-image:latest .
 ```yaml
 kubernetes:
   # kubeconfig: 
+  # context
   namespace: kaniko-remote # Default is default
 builder:
-  instanceId: lucas # Default is to get the username from the environment
+  name: lucas # Default is to get the username from the environment
   cpu: 1 # Default is 1, accepts any value k8s accepts
   memory: 1G # Default is 1G, accepts any value k8s accepts
   kanikoImage: "" # Default is gcr.io/kaniko-project/executor:latest
@@ -32,8 +33,11 @@ builder:
     why: not
   kanikoArgs: # Replaces default if provided, default is:
   - --use-new-run
-  pod_start_timeout: 300 # In seconds, default 5 mins
-  pod_transfer_packet_size: 9e3 # In bytes, default 9kB
+  podStartTimeout: 300 # In seconds, default 5 mins
+  podTransferPacketSize: 14e3 # In bytes, default 14kB
+tag:
+  fixed: eliiza.azurecr.io/specific-image:v1
+  prepend: eliiza.azurecr.io/dataiku
 auth: # Default is to have none of these
   - url: eliiza.azurecr.io
     mount: always # Defaults to only mounting each auth into the builder if the url matches the tag being built
@@ -50,7 +54,9 @@ auth: # Default is to have none of these
 kubernetes:
   namespace: kaniko-remote
 builder:
-  instanceId: lucas
+  name: lucas
+tag:
+  prepend: eliiza.azurecr.io/lucas-dev
 auth:
   - url: eliiza.azurecr.io
     mount: always

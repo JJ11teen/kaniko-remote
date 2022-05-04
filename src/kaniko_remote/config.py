@@ -10,6 +10,12 @@ from kaniko_remote.logging import getLogger
 
 logger = getLogger(__name__)
 
+_default_kubernetes_options = dict(
+    kubeconfig=None,
+    context=None,
+    namespace="default",
+)
+
 _default_builder_options = dict(
     name=getpass.getuser(),
     cpu="1",
@@ -21,8 +27,8 @@ _default_builder_options = dict(
     kaniko_args=[
         "--use-new-run",
     ],
-    pod_start_timeout=5 * 60,
-    pod_transfer_packet_size=9e3,
+    pod_start_timeout=5 * 60,  # 5 Minutes
+    pod_transfer_packet_size=14e3,  # 14kB
 )
 
 _default_auth_options = dict(
@@ -63,14 +69,11 @@ class Config:
     def _snake_caseify_dict(self, d: dict) -> dict:
         return {self._snake_caseify_regex.sub("_", k).lower(): v for k, v in d.items()}
 
-    def get_kubeconfig(self) -> Optional[str]:
-        return self.y.get("kubernetes.kubeconfig", None)
+    def get_kubernetes_options(self) -> dict:
+        return {**_default_kubernetes_options, **(self._snake_caseify_dict(self.y.get("kubernetes", {})))}
 
-    def get_context(self) -> Optional[str]:
-        return self.y.get("kubernetes.context", None)
-
-    def get_namespace(self) -> str:
-        return self.y.get("kubernetes.namespace", "default")
+    def get_tag_prepend(self):
+        return self.y.get("tag.prepend", None)
 
     def get_builder_options(self) -> dict:
         return {**_default_builder_options, **(self._snake_caseify_dict(self.y.get("builder", {})))}

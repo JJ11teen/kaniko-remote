@@ -156,8 +156,8 @@ class K8sWrapper(AbstractContextManager):
         local_files: Iterator[Path],
         remote_path: Path,
         relative_local_root: Path,
+        packet_size: int,
         progress_bar_description: Optional[str] = None,
-        packet_size: int = 9e3,
     ) -> float:
         s = stream(
             self.v1.connect_get_namespaced_pod_exec,
