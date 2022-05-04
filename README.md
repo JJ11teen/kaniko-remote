@@ -39,6 +39,8 @@ tag:
   default: eliiza.azurecr.io/some-default-image
   static: eliiza.azurecr.io/specific-image:v1
   prefix: eliiza.azurecr.io/dataiku
+  regexes:
+    pattern: template
 auth: # Default is to have none of these
   - url: eliiza.azurecr.io
     mount: always # Defaults to only mounting each auth into the builder if the url matches the tag being built
