@@ -102,7 +102,7 @@ class Builder(AbstractContextManager):
         )
 
         if self._local_context:
-            self._transfer_local_build_context()
+            await self._transfer_local_build_context()
         else:
             logger.debug("Using remote storage for context dir, skipping upload")
 
@@ -122,7 +122,7 @@ class Builder(AbstractContextManager):
 
     async def _transfer_local_build_context(self):
 
-        build_context_paths = iglob("**", recursive=True, root_dir=self._local_context)
+        build_context_paths = iglob(f"{self._local_context}/**", recursive=True)
 
         # Filter with dockerignore if exists
         try:

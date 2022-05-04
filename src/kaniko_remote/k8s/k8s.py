@@ -178,7 +178,7 @@ class K8sWrapper(AbstractContextManager):
                         internal_tar_path = f"/{os.path.relpath(local_file, relative_local_root)}"
                     else:
                         internal_tar_path = local_file
-                    logger.info(f"Including file in transfer to pod: {local_file}")
+                    logger.warning(f"Including file in transfer to pod: {local_file}")
                     tar.add(local_file, arcname=internal_tar_path)
 
             tar_buffer.seek(0)
