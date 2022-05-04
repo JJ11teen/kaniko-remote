@@ -74,17 +74,15 @@ async def build(path: Path, quiet: bool, iidfile: str, **kaniko_args):
 
     logger.warning(f"Remotely building image on remote k8s cluster (Using config: {config.config_location})")
 
-    with K8sWrapper(
-        kubeconfig=config.get_kubeconfig(),
-        context=config.get_context(),
-        namespace=config.get_namespace(),
-    ) as k8s:
+    pre_tag = config.get_tag_prepend()
+    kaniko_args["destinations"] = tuple([f"{pre_tag}/{d}" for d in kaniko_args["destinations"]])
+
+    with K8sWrapper(**config.get_kubernetes_options()) as k8s:
         with Builder(
             k8s_wrapper=k8s,
             config=config,
             **kaniko_args,
         ) as builder:
-
             logger.warning(f"Initialised builder {k8s.namespace}/{builder.pod_name}")
 
             start_time = time()
