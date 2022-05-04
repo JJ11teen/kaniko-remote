@@ -84,15 +84,24 @@ async def build(path: Path, quiet: bool, iidfile: str, **kaniko_args):
             config=config,
             **kaniko_args,
         ) as builder:
-            logger.warning(f"Initialised builder {k8s.namespace}/{builder.pod_name}")
+            logger.warning(f"Builder {k8s.namespace}/{builder.pod_name} created, pending scheduling")
 
             start_time = time()
             await builder.setup()
             setup_time = time() - start_time
-            logger.warning(f"Setup builder {builder.pod_name} in {setup_time:.2f} seconds, streaming logs:")
+            logger.warning(
+                f"Builder {k8s.namespace}/{builder.pod_name} setup in {setup_time:.2f} seconds, streaming logs:"
+            )
+            logger.warning(
+                f"Setup builder {k8s.namespace}/{builder.pod_name} in {setup_time:.2f} seconds, streaming logs:"
+            )
 
             start_time = time()
             image_sha = await builder.build(logger.warning)  # click.echo
-            setup_time = time() - start_time
-    logger.warning(f"Built image with digest {image_sha} in {setup_time:.2f} seconds")
-    logger.warning(f"Note that this newly built image has not been pulled to this machine")
+            build_time = time() - start_time
+            logger.warning(f"Builder {k8s.namespace}/{builder.pod_name} complete in {build_time:.2f}")
+
+    logger.warning(f"Built image digest: {image_sha}")
+    logger.warning(
+        f"Note that this newly built image exists in your container registry and has not been pulled to this machine"
+    )
