@@ -2,7 +2,7 @@ using System.CommandLine;
 using System.CommandLine.Binding;
 using KanikoRemote.Builder;
 
-namespace KanikoRemote.Parser
+namespace KanikoRemote.CLI
 {
     internal class BuildCommandBinder : BinderBase<BuilderArguments>
     {

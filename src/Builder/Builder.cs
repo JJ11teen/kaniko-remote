@@ -1,9 +1,11 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s.Models;
 using KanikoRemote.Auth;
 using KanikoRemote.K8s;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.Logging;
+using ShellProgressBar;
 
 namespace KanikoRemote.Builder
 {
@@ -20,7 +22,7 @@ namespace KanikoRemote.Builder
         private JsonObject dockerConfig;
 
         private bool podExistsInKubeApi() => !string.IsNullOrEmpty(this.pod.Metadata.Name);
-        private string podNameInKube
+        public string podNameInKube
         {
             get
             {
@@ -34,6 +36,7 @@ namespace KanikoRemote.Builder
 
         public Builder(
             NamespacedClient k8sClient,
+            IList<Authoriser> authorisers,
             BuilderOptions configOptions,
             BuilderArguments arguments,
             ILogger<Builder> logger)
@@ -67,7 +70,9 @@ namespace KanikoRemote.Builder
                 urlsToAuth.Add(arguments.ContextLocation);
             }
 
-            var authorisers = AuthMatcher.GetMatchingAuthorisers(urlsToAuth);
+            var matchingAuthorisers = authorisers
+                .Where(a => a.AlwaysMount() || urlsToAuth.Any(u => u == a.URLToMatch));
+
             this.pod = Specs.SetKanikoArgs(this.pod, kanikoArgs);
 
             this.dockerConfig = new JsonObject();
@@ -77,8 +82,7 @@ namespace KanikoRemote.Builder
                 this.pod = authoriser.AppendAuthToPod(this.pod);
             }
 
-            var authNames = string.Join(" ", authorisers.Select(a => a.GetName()));
-            this.logger.LogInformation($"Configured builder with the following auth profiles: {authNames}");
+            this.logger.LogInformation($"Configured builder with the {matchingAuthorisers.Count()} auth profiles");
             this.logger.LogDebug($"Generated docker config for builder: {dockerConfig}");
             this.logger.LogDebug($"Generated pod spec for builder: {this.pod}");
         }
@@ -87,9 +91,16 @@ namespace KanikoRemote.Builder
         {
             if (this.podExistsInKubeApi())
             {
-                logger.LogInformation($"Deleting builder pod {this.podNameInKube}");
-                await this.k8sClient.DeletePodAsync(this.podNameInKube);
-                logger.LogInformation($"Deleted builder pod {this.podNameInKube}");
+                if (this.options.KeepPodValue)
+                {
+                    this.logger.LogWarning($"Not removing builder pod {this.podNameInKube} as 'keepPod' configured");
+                }
+                else
+                {
+                    logger.LogInformation($"Deleting builder pod {this.podNameInKube}");
+                    await this.k8sClient.DeletePodAsync(this.podNameInKube);
+                    logger.LogInformation($"Deleted builder pod {this.podNameInKube}");
+                }
             }
             else
             {
@@ -132,18 +143,23 @@ namespace KanikoRemote.Builder
             }
 
             return args
-                .Select((k, v) => $"--{k}={v}")
+                .Select((kvp, i) => $"--{kvp.Key}={kvp.Value}")
                 .Concat(options.AdditionalKanikoArgs)
                 .Concat(arguments.MetadataLabels.Select(l => $"--label={l}"))
                 .Concat(arguments.BuildArgVariables.SelectMany(ba => new List<string>() { "--build-arg", ba }))
                 .Concat(arguments.DestinationTags.Select(d => $"--destination={d}"));
         }
 
-        public async ValueTask<string> Setup()
+
+        public async ValueTask<string> Initialise()
         {
             this.pod = await this.k8sClient.CreatePodAsync(this.pod);
             this.logger.LogDebug($"Initialised builder pod with spec: {this.pod}");
+            return this.podNameInKube;
+        }
 
+        public async ValueTask<string> Setup()
+        {
             await this.k8sClient.AwaitContainerRunningStateAsync(
                 podName: this.podNameInKube,
                 container: "setup",
@@ -158,7 +174,14 @@ namespace KanikoRemote.Builder
                 logger.LogInformation($"Using remote storage as build context, skipping local upload");
             }
 
-            // TODO: upload docker config
+            await this.k8sClient.UploadStringAsFileToContiainerAsync(
+                podName: this.podNameInKube,
+                container: "setup",
+                stringData: this.dockerConfig.ToJsonString(),
+                fileName: "config.json",
+                remoteRoot: "/kaniko/.docker",
+                packetSize: options.PodTransferPacketSize
+            );
 
             return this.podNameInKube;
         }
@@ -171,14 +194,73 @@ namespace KanikoRemote.Builder
 
             // TODO: filter with dockerignore if it exists
 
+            var prog = new ProgressBar(1, "[KANIKO-REMOTE] (info) Sending context", new ProgressBarOptions()
+            {
+                ProgressCharacter = '#',
+                // DenseProgressBar = true,
+                ForegroundColor = ConsoleColor.White,
+                ForegroundColorDone = ConsoleColor.White,
+                CollapseWhenFinished = false,
+                ProgressBarOnBottom = true,
+                DisableBottomPercentage = true,
+                ShowEstimatedDuration = false,
+
+            });
+
             await this.k8sClient.UploadLocalFilesToContainerAsync(
                 podName: this.podNameInKube,
                 container: "setup",
                 localFiles: localFilesToSend,
-                remotePath: "/workspace",
-                relativeLocalRoot: localContextPath,
+                remoteRoot: "/workspace",
                 packetSize: options.PodTransferPacketSize,
-                progressBarDescription: "todo");
+                progress: prog);
+        }
+
+        public async Task<string> Build()
+        {
+            var started = this.k8sClient.AwaitContainerRunningStateAsync(
+                podName: this.podNameInKube,
+                container: "builder",
+                timeoutSeconds: 10);
+            var failedStart = this.k8sClient.AwaitContainerTerminatedStateAsync(
+                podName: this.podNameInKube,
+                container: "builder",
+                timeoutSeconds: 10);
+
+            var containerState = await Task.WhenAny(started, failedStart);
+
+            if (containerState == failedStart)
+            {
+                // Tail works as get -- gets logs of why kaniko failed to start
+                await foreach (var logLine in this.k8sClient.TailContainerLogsAsync(
+                    podName: this.podNameInKube,
+                    container: "builder",
+                    sinceSeconds: 10))
+                {
+                    this.logger.LogInformation(logLine);
+                }
+                throw new KanikoException("Kaniko failed to start, see above logs for erroneous args", failedStart.Result);
+            }
+
+            // Else tail for build logs
+            await foreach (var logLine in this.k8sClient.TailContainerLogsAsync(
+                podName: this.podNameInKube,
+                container: "builder",
+                sinceSeconds: 10))
+            {
+                this.logger.LogInformation(logLine);
+            }
+
+            var finished = await this.k8sClient.AwaitContainerTerminatedStateAsync(
+                podName: this.podNameInKube,
+                container: "builder",
+                timeoutSeconds: 10);
+
+            if (finished.ExitCode == 0)
+            {
+                return finished.Message;
+            }
+            throw new KanikoException("Kaniko failed to build and/or push image, increase verbosity if kaniko logs are not visible above", finished);
         }
     }
 }

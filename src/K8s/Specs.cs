@@ -39,6 +39,7 @@ namespace KanikoRemote.K8s
             labels["kaniko-remote/builder-name"] = name;
 
             var annotations = new Dictionary<string, string>(additionalAnnotations);
+            // TODO:
             // labels["kanaiko-remote/version"] = __version__;
 
             return new V1Pod
@@ -59,6 +60,7 @@ namespace KanikoRemote.K8s
                             Name = "setup",
                             Image = setupImage,
                             Command = new List<string> { "sh", "-c" },
+                            // Args = new List<string> { "trap : TERM INT; sleep 9999999999d & wait" },
                             Args = new List<string> { "until [ -e /kaniko/.docker/config.json ]; do sleep 1; done" },
                             VolumeMounts = dockerConfigVolumeMounts,
                             Resources = resources,
@@ -166,7 +168,7 @@ namespace KanikoRemote.K8s
             return pod;
         }
 
-        public static V1Pod AppendValueFromSecret(V1Pod pod, string secretName, string mountPath)
+        public static V1Pod AppendVolumeFromSecret(V1Pod pod, string secretName, string mountPath)
         {
             var mounts = pod.Spec.Containers.First().VolumeMounts;
             var volumes = pod.Spec.Volumes;

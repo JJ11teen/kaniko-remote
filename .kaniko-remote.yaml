@@ -1,0 +1,13 @@
+kubernetes:
+  namespace: kaniko-remote
+builder:
+  name: lucas
+  # keepPod: true
+tag:
+  prepend: eliiza.azurecr.io/lucas-dev
+auth:
+  - type: acr
+    registry: eliiza.azurecr.io
+    mount: always
+    env:
+    - fromSecret: eliiza-azurecr-push-sp

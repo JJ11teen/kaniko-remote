@@ -1,8 +1,12 @@
 using Microsoft.Extensions.Logging;
 using k8s;
 using k8s.Models;
-using ICSharpCode.SharpZipLib.GZip;
 using ICSharpCode.SharpZipLib.Tar;
+using System.Text;
+using System.Security.Cryptography;
+using System.IO.Compression;
+using ShellProgressBar;
+using System.Text.Json;
 
 namespace KanikoRemote.K8s
 {
@@ -11,10 +15,10 @@ namespace KanikoRemote.K8s
         private readonly Kubernetes Client;
         private readonly ILogger<NamespacedClient> logger;
 
+        public readonly string Namespace;
 
         private readonly string? Kubeconfig;
         private readonly string? Context;
-        private readonly string Namespace;
         private readonly bool runningInCluster;
 
         public NamespacedClient(KubernetesOptions options, ILogger<NamespacedClient> logger)
@@ -22,7 +26,7 @@ namespace KanikoRemote.K8s
             this.Kubeconfig = options.Kubeconfig;
             this.Context = options.Context;
             this.logger = logger;
-            this.runningInCluster = Environment.GetEnvironmentVariable("KUBERNETES_SERVICE_HOST") != null;
+            this.runningInCluster = KubernetesClientConfiguration.IsInCluster();
 
             if (this.runningInCluster && (this.Kubeconfig != null || this.Context != null))
             {
@@ -45,7 +49,17 @@ namespace KanikoRemote.K8s
                 this.Namespace = "default";
             }
 
-            var config = this.runningInCluster ? KubernetesClientConfiguration.InClusterConfig() : KubernetesClientConfiguration.BuildConfigFromConfigFile(kubeconfigPath: this.Kubeconfig, currentContext: this.Context);
+            KubernetesClientConfiguration config;
+            if (this.runningInCluster)
+            {
+                config = KubernetesClientConfiguration.InClusterConfig();
+            }
+            else
+            {
+                var configModel = KubernetesClientConfiguration.LoadKubeConfig(this.Kubeconfig);
+
+                config = KubernetesClientConfiguration.BuildConfigFromConfigObject(configModel, this.Context);
+            }
             this.Client = new Kubernetes(config);
         }
 
@@ -74,10 +88,10 @@ namespace KanikoRemote.K8s
                 V1ContainerState? state;
                 try
                 {
-                    state = pod.Status.ContainerStatuses
-                        .Concat(pod.Status.InitContainerStatuses)
-                        .Concat(pod.Status.EphemeralContainerStatuses)
-                        .SingleOrDefault(s => s?.Name == podName, null)
+                    state = (pod.Status.ContainerStatuses ?? Enumerable.Empty<V1ContainerStatus>())
+                        .Concat(pod.Status.InitContainerStatuses ?? Enumerable.Empty<V1ContainerStatus>())
+                        .Concat(pod.Status.EphemeralContainerStatuses ?? Enumerable.Empty<V1ContainerStatus>())
+                        .SingleOrDefault(s => s?.Name == container, null)
                         ?.State;
                 }
                 catch (InvalidOperationException e)
@@ -96,7 +110,7 @@ namespace KanikoRemote.K8s
         {
             await foreach (var state in this.WatchContainerStatesAsync(podName, container, timeoutSeconds))
             {
-                this.logger.LogTrace($"Waiting for container '{container}' in pod '{podName}' to reach running state, current state: {state}");
+                this.logger.LogDebug($"Waiting for container '{container}' in pod '{podName}' to reach running state, current state: {JsonSerializer.Serialize(state)}");
                 if (state.Running != null)
                 {
                     return state.Running;
@@ -110,7 +124,7 @@ namespace KanikoRemote.K8s
         {
             await foreach (var state in this.WatchContainerStatesAsync(podName, container, timeoutSeconds))
             {
-                this.logger.LogTrace($"Waiting for container '{container}' in pod '{podName}' to reach terminated state, current state: {state}");
+                this.logger.LogDebug($"Waiting for container '{container}' in pod '{podName}' to reach terminated state, current state: {JsonSerializer.Serialize(state)}");
                 if (state.Terminated != null)
                 {
                     return state.Terminated;
@@ -119,70 +133,30 @@ namespace KanikoRemote.K8s
             throw new TimeoutException($"Container '{container}' in pod '{podName}' did not reach terminated state before timeout reached");
         }
 
-        public async IAsyncEnumerable<string> TailContainerLogsAsync(string podName, string container)
+        public async IAsyncEnumerable<string> TailContainerLogsAsync(string podName, string container, int? sinceSeconds = null)
         {
             var response = await this.Client.CoreV1.ReadNamespacedPodLogWithHttpMessagesAsync(
                 namespaceParameter: this.Namespace,
                 name: podName,
                 container: container,
+                sinceSeconds: sinceSeconds,
                 follow: true);
 
-            var reader = new StreamReader(response.Body);
-
-            var line = await reader.ReadLineAsync();
-            while (line != null)
+            using (var reader = new StreamReader(response.Body))
             {
-                yield return line;
-                line = await reader.ReadLineAsync();
-            }
-        }
-
-
-        public async Task UploadTarGzStreamToContainerAsync(string podName, string container, string remotePath, Stream tarGzStream, int packetSize, string? progressBarDescription)
-        {
-            var ws = await this.Client.WebSocketNamespacedPodExecAsync(
-                name: podName,
-                @namespace: this.Namespace,
-                command: "sh",
-                container: container,
-                stdin: true,
-                stdout: true,
-                stderr: true,
-                tty: false).ConfigureAwait(false);
-            var demux = new StreamDemuxer(ws);
-            demux.Start();
-            var stream = demux.GetStream(ChannelIndex.StdOut, ChannelIndex.StdIn);
-
-            IEnumerable<char[]> commandGenerator()
-            {
-                var remoteTempFilename = new Guid().ToString();
-                yield return $"cat <<EOF > /tmp/{remoteTempFilename}.tar.gz.b64".ToCharArray();
-                while (tarGzStream.Position < tarGzStream.Length)
+                var line = await reader.ReadLineAsync();
+                while (line != null)
                 {
-                    yield return tarGzStream.ReadAsync()
+                    yield return line;
+                    line = await reader.ReadLineAsync();
                 }
-                yield return "EOF".ToCharArray();
-                yield return $"base64 -d /tmp/{remoteTempFilename}.tar.gz.b64 >> /tmp/{remoteTempFilename}.tar.gz".ToCharArray();
-                yield return $"tar xvf /tmp/{remoteTempFilename}.tar.gz -C {remotePath}".ToCharArray();
             }
-
-
-# TODO: batch packets more efficiently than just per line
-            def command_gen():
-                yield f"cat <<EOF > /tmp/{remote_temp_filename}.tar.gz.b64"
-                while tar_buffer.peek():
-                    # TODO: find good default for packet size, make configurable
-                    data = tar_buffer.read(packet_size)
-                    b64_str = str(base64.b64encode(data), "utf-8")
-                    yield b64_str
-                yield "EOF"
-                yield f"base64 -d /tmp/{remote_temp_filename}.tar.gz.b64 >> /tmp/{remote_temp_filename}.tar.gz"
-                yield f"tar xvf /tmp/{remote_temp_filename}.tar.gz -C {remote_path}"
         }
 
-        public async Task UploadLocalFilesToContainerAsync(string podName, string container, IEnumerable<string> localFiles, string remotePath, string relativeLocalRoot, int packetSize, string? progressBarDescription)
+        private async Task UploadTarToContainerAsync(string podName, string container, string remoteRoot, Action<TarOutputStream> tarFunc, int packetSize, IProgressBar? progress)
         {
-            var remoteTempFilename = new Guid().ToString();
+            this.logger.LogDebug("Beginning pod data transfer");
+            var remoteTempFilename = Guid.NewGuid().ToString()[..8];
             var ws = await this.Client.WebSocketNamespacedPodExecAsync(
                 name: podName,
                 @namespace: this.Namespace,
@@ -194,28 +168,108 @@ namespace KanikoRemote.K8s
                 tty: false).ConfigureAwait(false);
             var demux = new StreamDemuxer(ws);
             demux.Start();
-            var stream = demux.GetStream(ChannelIndex.StdOut, ChannelIndex.StdIn);
 
-            using (var memoryStream = new MemoryStream())
+            var podStream = demux.GetStream(ChannelIndex.StdOut, ChannelIndex.StdIn);
+
+            var readTask = Task.Run(async () =>
             {
-                using (var gzipStream = new GZipOutputStream(memoryStream))
-                using (var tarArchive = TarArchive.CreateOutputTarArchive(gzipStream))
+                using (var reader = new StreamReader(podStream, leaveOpen: true))
                 {
-                    var fileCount = 0;
-                    foreach (var localFile in localFiles)
+                    while (!reader.EndOfStream)
                     {
-                        logger.LogDebug($"Including file in transfer to pod: {localFile}");
-                        var tarEntry = TarEntry.CreateEntryFromFile(localFile);
-                        tarArchive.WriteEntry(tarEntry, false);
-                        fileCount++;
+                        var response = await reader.ReadLineAsync();
+                        this.logger.LogDebug($"pod stdout: {response}");
                     }
-                    logger.LogInformation($"Including {fileCount} files in transfer to pod");
                 }
-                memoryStream.Seek(0, SeekOrigin.Begin);
-                logger.LogInformation($"Transferring {memoryStream.Length} bytes to pod");
+            });
 
+            using (var podWriter = new StreamWriter(podStream, Encoding.ASCII, leaveOpen: true))
+            {
+                await podWriter.WriteLineAsync($"cat <<EOF > /tmp/{remoteTempFilename}.tar.gz.b64");
 
+                using (var memory = new MemoryStream())
+                {
+                    // Write files to memory stream, encoding as files -> tar -> gzip -> b64
+                    using (var base64Writer = new CryptoStream(memory, new ToBase64Transform(), CryptoStreamMode.Write, leaveOpen: true))
+                    using (var gzipWriter = new GZipStream(base64Writer, CompressionMode.Compress))
+                    using (var tarWriter = new TarOutputStream(gzipWriter, Encoding.UTF8))
+                    {
+                        tarFunc(tarWriter);
+                        await tarWriter.FlushAsync();
+                    }
+
+                    memory.Position = 0;
+                    logger.LogDebug($"Transferring {memory.Length} bytes to pod");
+                    if (progress != null)
+                    {
+                        progress.MaxTicks = (int)memory.Length;
+                    }
+
+                    // Write memory to pod
+                    using (var sr = new StreamReader(memory, leaveOpen: true))
+                    {
+                        var writeBuffer = new char[packetSize];
+                        while (!sr.EndOfStream)
+                        {
+                            var amountRead = await sr.ReadBlockAsync(writeBuffer, 0, packetSize);
+                            await podWriter.WriteLineAsync(writeBuffer, 0, amountRead);
+                            progress?.Tick((int)memory.Position);
+                        }
+                    }
+                }
+
+                await podWriter.WriteLineAsync("EOF");
+                await podWriter.WriteLineAsync($"base64 -d /tmp/{remoteTempFilename}.tar.gz.b64 >> /tmp/{remoteTempFilename}.tar.gz");
+                await podWriter.WriteLineAsync($"tar xvf /tmp/{remoteTempFilename}.tar.gz -C {remoteRoot}");
             }
+
+            podStream.Close();
+
+            // TODO: look into cancelling/awaiting/cleaning up read task
+            // Probably need to wait until this in .NET 7: https://github.com/dotnet/runtime/issues/20824
+            // await readTask;
+            // Until then, a slight delay helps keep things somewhat synchronised as we just
+            // leave the reader task running
+            await Task.Delay(200);
+
+            this.logger.LogDebug($"Completed pod data transfer");
+        }
+
+        public Task UploadLocalFilesToContainerAsync(string podName, string container, IEnumerable<string> localFiles, string remoteRoot, int packetSize, IProgressBar? progress = null)
+        {
+            var entries = new List<TarEntry>();
+            foreach (var localFile in localFiles)
+            {
+                this.logger.LogDebug($"Including file in transfer to pod: {localFile}");
+                var entry = TarEntry.CreateEntryFromFile(localFile);
+                entries.Add(entry);
+            }
+            this.logger.LogInformation($"Transferring {entries.Count} files to pod");
+            return this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
+            {
+                // await Task.Delay(0);
+                var tarArchive = TarArchive.CreateOutputTarArchive(tarStream);
+                foreach (var te in entries)
+                {
+                    tarArchive.WriteEntry(te, false);
+                }
+            }, packetSize, progress);
+        }
+
+        public Task UploadStringAsFileToContiainerAsync(string podName, string container, string stringData, string fileName, string remoteRoot, int packetSize, IProgressBar? progress = null)
+        {
+            return this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
+            {
+                // Form tar header
+                var tarHeader = new TarHeader();
+                TarEntry.NameTarHeader(tarHeader, fileName);
+                var tarEntry = new TarEntry(tarHeader);
+                tarEntry.Size = Encoding.UTF8.GetByteCount(stringData);
+                // Write header & data to stream
+                tarStream.PutNextEntry(tarEntry);
+                tarStream.Write(Encoding.UTF8.GetBytes(stringData));
+                tarStream.CloseEntry();
+            }, packetSize, progress);
         }
     }
 }
