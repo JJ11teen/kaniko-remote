@@ -4,7 +4,6 @@ using KanikoRemote.Builder;
 using KanikoRemote.CLI;
 using KanikoRemote.Config;
 using KanikoRemote.K8s;
-using KanikoRemote.Tagger;
 using Microsoft.Extensions.Logging;
 
 namespace KanikoRemote
@@ -70,6 +69,12 @@ namespace KanikoRemote
                 logger.LogInformation("The newly built image has been pushed to your container registry and is not available locally");
             }
         }
+
+        public static string GetVersionString()
+        {
+            return ThisAssembly.Git.SemVer.Major + "." + ThisAssembly.Git.SemVer.Minor + "." + ThisAssembly.Git.SemVer.Patch + "+" + ThisAssembly.Git.Commit;
+        }
+
     }
 
 

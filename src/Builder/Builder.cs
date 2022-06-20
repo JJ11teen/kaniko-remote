@@ -3,11 +3,11 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s.Models;
 using KanikoRemote.Auth;
+using KanikoRemote.CLI;
 using KanikoRemote.Config;
 using KanikoRemote.K8s;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.Logging;
-using ShellProgressBar;
 
 namespace KanikoRemote.Builder
 {
@@ -132,12 +132,12 @@ namespace KanikoRemote.Builder
             {
                 if (!uri.IsAbsoluteUri)
                 {
-                    this.logger.LogInformation("Local context detected, the context will be transferred directly to the builder pod.");
+                    this.logger.LogInformation("Local context detected, the context will be transferred directly to the builder pod");
                     return true;
                 }
                 else
                 {
-                    logger.LogInformation("Remote context detected, builder pod will be authorised to access configured remote storage.");
+                    logger.LogInformation("Remote context detected, builder pod will be authorised to access configured remote storage");
                     return false;
                 }
             }
@@ -220,45 +220,37 @@ namespace KanikoRemote.Builder
             }
 
             var localFilesToSend = contextMatcher.GetResultsInFullPath(localContextPath);
+            var fileCount = localFilesToSend.Count();
 
-            var pog = new Progress<(long, long)>(both => {
-                var percent = (int)(both.Item2 / both.Item2) * 10;
+            var prog = new Progress<(long, long)>(update => {
+                var (current, total) = update;
+                var percent = ((double)current / (double)total) * 40;
                 var sb = new StringBuilder();
-                sb.Append("Sending context to builder [");
-                sb.Append(new string('#', percent));
-                sb.Append(new string('-', 10 - percent));
+                
+                sb.Append("Transferring ");
+                sb.Append(fileCount);
+                sb.Append(" files to builder [");
+                sb.Append(new string('#', (int)percent));
+                sb.Append(new string('-', 40 - (int)percent));
                 sb.Append("] (");
-                sb.Append(both.Item1);
+                sb.Append(current / 1024);
                 sb.Append("/");
-                sb.Append(both.Item2);
-                sb.Append(")");
-                this.logger.LogInformation(sb.ToString());
+                sb.Append(total / 1024);
+                sb.Append("kB)");
+                
+                this.logger.LogInformation(KanikoRemoteConsoleFormatter.OverwritableEvent, sb.ToString());
             });
-            // var prog = new ProgressBar(10, "[KANIKO-REMOTE] (info) Sending context", new ProgressBarOptions()
-            // {
-            //     ProgressCharacter = '#',
-            //     // DenseProgressBar = true,
-            //     ForegroundColor = ConsoleColor.White,
-            //     ForegroundColorDone = ConsoleColor.White,
-            //     CollapseWhenFinished = true,
-            //     ProgressBarOnBottom = true,
-            //     DisableBottomPercentage = true,
-            //     ShowEstimatedDuration = false,
 
-            // });
-
-            await this.k8sClient.UploadLocalFilesToContainerAsync(
+            var bytesSent = await this.k8sClient.UploadLocalFilesToContainerAsync(
                 podName: this.podNameInKube,
                 container: "setup",
                 localRoot: localContextPath,
                 localAbsoluteFilepaths: localFilesToSend,
                 remoteRoot: "/workspace",
                 packetSize: this.podTransferPacketSize,
-                progress: pog);
+                progress: prog);
 
-            // Helps clear out the progress bar
-            this.logger.LogInformation("");
-            this.logger.LogInformation("");
+            this.logger.LogInformation($"Transferred {fileCount} to builder ({bytesSent / 1024}kB)".PadRight(100));
         }
 
         public async Task<string> Build()

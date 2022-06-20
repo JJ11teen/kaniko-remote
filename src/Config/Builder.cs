@@ -11,7 +11,7 @@ namespace KanikoRemote.Config
         public IDictionary<string, string> AdditionalAnnotations { get; init; } = new Dictionary<string, string>();
         public IList<string> AdditionalKanikoArgs { get; init; } = new List<string>() { "--use-new-run" };
         public int PodStartTimeout { get; init; } = 5 * 60; // 5 minutes
-        public int PodTransferPacketSize { get; init; } = (int)14e3; // 14kB
+        public int PodTransferPacketSize { get; init; } = 14 * 1024; // 14kB
         public string KeepPod { get; init; } = "false";
     }
 }

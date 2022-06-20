@@ -20,6 +20,8 @@ namespace KanikoRemote.CLI
 
     internal sealed class KanikoRemoteConsoleFormatter : ConsoleFormatter
     {
+        public static readonly EventId OverwritableEvent = new EventId(2002, "overwritable");
+
         public KanikoRemoteConsoleFormatter() : base("kaniko-remote") { }
 
         public override void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider scopeProvider, TextWriter textWriter)
@@ -37,7 +39,16 @@ namespace KanikoRemote.CLI
             textWriter.Write("[KANIKO-REMOTE] (");
             textWriter.WriteWithColor(logLevelString, foreColor, backColor);
             textWriter.Write(") ");
-            textWriter.WriteLine(message);
+
+            if (logEntry.EventId == OverwritableEvent)
+            {
+                textWriter.Write(message);
+                textWriter.Write("\r");
+            }
+            else
+            {
+                textWriter.WriteLine(message);
+            }
         }
 
         private static (string, ConsoleColor, ConsoleColor) GetLogLevel(LogLevel logLevel)

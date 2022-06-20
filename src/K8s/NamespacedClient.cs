@@ -5,7 +5,6 @@ using ICSharpCode.SharpZipLib.Tar;
 using System.Text;
 using System.Security.Cryptography;
 using System.IO.Compression;
-using ShellProgressBar;
 using System.Text.Json;
 using KanikoRemote.Config;
 
@@ -158,10 +157,11 @@ namespace KanikoRemote.K8s
             }
         }
 
-        private async Task UploadTarToContainerAsync(string podName, string container, string remoteRoot, Action<TarOutputStream> tarFunc, int packetSize, IProgress<(long, long)>? progress)
+        private async Task<long> UploadTarToContainerAsync(string podName, string container, string remoteRoot, Action<TarOutputStream> tarFunc, int packetSize, IProgress<(long, long)>? progress)
         {
             this.logger.LogDebug("Beginning pod data transfer");
             var remoteTempFilename = Guid.NewGuid().ToString()[..8];
+            var completeToken = $"<<{remoteTempFilename}COMPLETETOKEN>>";
             var ws = await this.Client.WebSocketNamespacedPodExecAsync(
                 name: podName,
                 @namespace: this.Namespace,
@@ -178,16 +178,22 @@ namespace KanikoRemote.K8s
 
             var readTask = Task.Run(async () =>
             {
-                using (var reader = new StreamReader(podStream, leaveOpen: true))
+                using (var podStdOut = new StreamReader(podStream, leaveOpen: true))
                 {
-                    while (!reader.EndOfStream)
+                    var reachedCompleteToken = false;
+                    while (!podStdOut.EndOfStream && !reachedCompleteToken)
                     {
-                        var response = await reader.ReadLineAsync();
-                        this.logger.LogDebug($"pod stdout: {response}");
+                        var logLine = await podStdOut.ReadLineAsync();
+                        this.logger.LogDebug($"pod stdout: {logLine}");
+                        if (logLine == completeToken)
+                        {
+                            reachedCompleteToken = true;
+                        }
                     }
                 }
             });
 
+            long totalBytes;
             using (var podWriter = new StreamWriter(podStream, Encoding.ASCII, leaveOpen: true))
             {
                 await podWriter.WriteLineAsync($"cat <<EOF > /tmp/{remoteTempFilename}.tar.gz.b64");
@@ -204,7 +210,8 @@ namespace KanikoRemote.K8s
                     }
 
                     memory.Position = 0;
-                    logger.LogDebug($"Transferring {memory.Length} bytes to pod");
+                    totalBytes = memory.Length;
+                    logger.LogDebug($"Transferring {totalBytes} bytes to pod");
 
                     // Write memory to pod
                     using (var sr = new StreamReader(memory, leaveOpen: true))
@@ -214,7 +221,7 @@ namespace KanikoRemote.K8s
                         {
                             var amountRead = await sr.ReadBlockAsync(writeBuffer, 0, packetSize);
                             await podWriter.WriteLineAsync(writeBuffer, 0, amountRead);
-                            progress?.Report((memory.Position, memory.Length));
+                            progress?.Report((memory.Position, totalBytes));
                         }
                     }
                 }
@@ -222,21 +229,18 @@ namespace KanikoRemote.K8s
                 await podWriter.WriteLineAsync("EOF");
                 await podWriter.WriteLineAsync($"base64 -d /tmp/{remoteTempFilename}.tar.gz.b64 >> /tmp/{remoteTempFilename}.tar.gz");
                 await podWriter.WriteLineAsync($"tar xvf /tmp/{remoteTempFilename}.tar.gz -C {remoteRoot}");
+                await podWriter.WriteLineAsync($"echo {completeToken}");
             }
 
+            // Awaiting the read task waits for the completion token, which includes untarring time
+            await readTask;
             podStream.Close();
 
-            // TODO: look into cancelling/awaiting/cleaning up read task
-            // Probably need to wait until this in .NET 7: https://github.com/dotnet/runtime/issues/20824
-            // await readTask;
-            // Until then, a slight delay helps keep things somewhat synchronised as we just
-            // leave the reader task running
-            await Task.Delay(200);
-
             this.logger.LogDebug($"Completed pod data transfer");
+            return totalBytes;
         }
 
-        public Task UploadLocalFilesToContainerAsync(string podName, string container, string localRoot, IEnumerable<string> localAbsoluteFilepaths, string remoteRoot, int packetSize, IProgress<(long, long)>? progress = null)
+        public Task<long> UploadLocalFilesToContainerAsync(string podName, string container, string localRoot, IEnumerable<string> localAbsoluteFilepaths, string remoteRoot, int packetSize, IProgress<(long, long)>? progress = null)
         {
             var entries = new List<TarEntry>();
             foreach (var localFile in localAbsoluteFilepaths)
@@ -245,7 +249,7 @@ namespace KanikoRemote.K8s
                 var entry = TarEntry.CreateEntryFromFile(localFile);
                 entries.Add(entry);
             }
-            this.logger.LogInformation($"Transferring {entries.Count} files to pod");
+            this.logger.LogDebug($"Transferring {entries.Count} files to pod");
             return this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
             {
                 var tarArchive = TarArchive.CreateOutputTarArchive(tarStream);
@@ -257,7 +261,7 @@ namespace KanikoRemote.K8s
             }, packetSize, progress);
         }
 
-        public Task UploadStringAsFileToContiainerAsync(string podName, string container, string stringData, string fileName, string remoteRoot, int packetSize, IProgress<(long, long)>? progress = null)
+        public Task<long> UploadStringAsFileToContiainerAsync(string podName, string container, string stringData, string fileName, string remoteRoot, int packetSize, IProgress<(long, long)>? progress = null)
         {
             return this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
             {

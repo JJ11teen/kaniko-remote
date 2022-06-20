@@ -72,7 +72,7 @@ namespace KanikoRemote.Tagger
                 }
             }
             var prettyPrint = string.Join(", ", outputTags);
-            this.logger.LogInformation($"Adjusted tags to {prettyPrint}");
+            this.logger.LogInformation($"Adjusted tags to: {prettyPrint}");
             return outputTags;
         }
     }

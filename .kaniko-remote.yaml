@@ -2,8 +2,6 @@ kubernetes:
   namespace: kaniko-remote
 builder:
   name: lucas
-  # keepPod: true
-  # kanikoImage: gcr.io/kaniko-project/executor:debug
 tags:
   prefix: eliiza.azurecr.io/lucas-dev
 auth:
