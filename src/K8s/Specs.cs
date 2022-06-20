@@ -109,6 +109,9 @@ namespace KanikoRemote.K8s
             pod.Spec.Containers.First().Command = null;
             pod.Spec.Containers.First().Args = args.ToList();
 
+            // pod.Spec.Containers.First().Command = new List<string> { "/busybox/sh", "-c" };
+            // pod.Spec.Containers.First().Args = new List<string> { "trap : TERM INT; sleep 9999999999d & wait" };
+
             return pod;
         }
 

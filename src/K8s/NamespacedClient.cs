@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.IO.Compression;
 using ShellProgressBar;
 using System.Text.Json;
+using KanikoRemote.Config;
 
 namespace KanikoRemote.K8s
 {
@@ -21,10 +22,10 @@ namespace KanikoRemote.K8s
         private readonly string? Context;
         private readonly bool runningInCluster;
 
-        public NamespacedClient(KubernetesOptions options, ILogger<NamespacedClient> logger)
+        public NamespacedClient(KubernetesConfiguration config, ILogger<NamespacedClient> logger)
         {
-            this.Kubeconfig = options.Kubeconfig;
-            this.Context = options.Context;
+            this.Kubeconfig = config.Kubeconfig;
+            this.Context = config.Context;
             this.logger = logger;
             this.runningInCluster = KubernetesClientConfiguration.IsInCluster();
 
@@ -33,10 +34,10 @@ namespace KanikoRemote.K8s
                 logger.LogWarning("kubernetes.kubeconfig and kubernetes.context are ignored when running in a kubernetes cluster");
             }
 
-            if (options.Namespace != null)
+            if (config.Namespace != null)
             {
                 // If namespace explicitly set, use that
-                this.Namespace = options.Namespace;
+                this.Namespace = config.Namespace;
             }
             else if (this.runningInCluster)
             {
@@ -49,18 +50,18 @@ namespace KanikoRemote.K8s
                 this.Namespace = "default";
             }
 
-            KubernetesClientConfiguration config;
+            KubernetesClientConfiguration clientConfig;
             if (this.runningInCluster)
             {
-                config = KubernetesClientConfiguration.InClusterConfig();
+                clientConfig = KubernetesClientConfiguration.InClusterConfig();
             }
             else
             {
                 var configModel = KubernetesClientConfiguration.LoadKubeConfig(this.Kubeconfig);
 
-                config = KubernetesClientConfiguration.BuildConfigFromConfigObject(configModel, this.Context);
+                clientConfig = KubernetesClientConfiguration.BuildConfigFromConfigObject(configModel, this.Context);
             }
-            this.Client = new Kubernetes(config);
+            this.Client = new Kubernetes(clientConfig);
         }
 
         public Task<V1Pod> CreatePodAsync(V1Pod body)
@@ -133,14 +134,18 @@ namespace KanikoRemote.K8s
             throw new TimeoutException($"Container '{container}' in pod '{podName}' did not reach terminated state before timeout reached");
         }
 
-        public async IAsyncEnumerable<string> TailContainerLogsAsync(string podName, string container, int? sinceSeconds = null)
+        public async IAsyncEnumerable<string> GetContainerLogsAsync(
+            string podName,
+            string container,
+            int? sinceSeconds = null,
+            bool tail = false)
         {
             var response = await this.Client.CoreV1.ReadNamespacedPodLogWithHttpMessagesAsync(
                 namespaceParameter: this.Namespace,
                 name: podName,
                 container: container,
                 sinceSeconds: sinceSeconds,
-                follow: true);
+                follow: tail);
 
             using (var reader = new StreamReader(response.Body))
             {
@@ -153,7 +158,7 @@ namespace KanikoRemote.K8s
             }
         }
 
-        private async Task UploadTarToContainerAsync(string podName, string container, string remoteRoot, Action<TarOutputStream> tarFunc, int packetSize, IProgressBar? progress)
+        private async Task UploadTarToContainerAsync(string podName, string container, string remoteRoot, Action<TarOutputStream> tarFunc, int packetSize, IProgress<(long, long)>? progress)
         {
             this.logger.LogDebug("Beginning pod data transfer");
             var remoteTempFilename = Guid.NewGuid().ToString()[..8];
@@ -200,10 +205,6 @@ namespace KanikoRemote.K8s
 
                     memory.Position = 0;
                     logger.LogDebug($"Transferring {memory.Length} bytes to pod");
-                    if (progress != null)
-                    {
-                        progress.MaxTicks = (int)memory.Length;
-                    }
 
                     // Write memory to pod
                     using (var sr = new StreamReader(memory, leaveOpen: true))
@@ -213,7 +214,7 @@ namespace KanikoRemote.K8s
                         {
                             var amountRead = await sr.ReadBlockAsync(writeBuffer, 0, packetSize);
                             await podWriter.WriteLineAsync(writeBuffer, 0, amountRead);
-                            progress?.Tick((int)memory.Position);
+                            progress?.Report((memory.Position, memory.Length));
                         }
                     }
                 }
@@ -235,10 +236,10 @@ namespace KanikoRemote.K8s
             this.logger.LogDebug($"Completed pod data transfer");
         }
 
-        public Task UploadLocalFilesToContainerAsync(string podName, string container, IEnumerable<string> localFiles, string remoteRoot, int packetSize, IProgressBar? progress = null)
+        public Task UploadLocalFilesToContainerAsync(string podName, string container, string localRoot, IEnumerable<string> localAbsoluteFilepaths, string remoteRoot, int packetSize, IProgress<(long, long)>? progress = null)
         {
             var entries = new List<TarEntry>();
-            foreach (var localFile in localFiles)
+            foreach (var localFile in localAbsoluteFilepaths)
             {
                 this.logger.LogDebug($"Including file in transfer to pod: {localFile}");
                 var entry = TarEntry.CreateEntryFromFile(localFile);
@@ -247,8 +248,8 @@ namespace KanikoRemote.K8s
             this.logger.LogInformation($"Transferring {entries.Count} files to pod");
             return this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
             {
-                // await Task.Delay(0);
                 var tarArchive = TarArchive.CreateOutputTarArchive(tarStream);
+                tarArchive.RootPath = localRoot;
                 foreach (var te in entries)
                 {
                     tarArchive.WriteEntry(te, false);
@@ -256,7 +257,7 @@ namespace KanikoRemote.K8s
             }, packetSize, progress);
         }
 
-        public Task UploadStringAsFileToContiainerAsync(string podName, string container, string stringData, string fileName, string remoteRoot, int packetSize, IProgressBar? progress = null)
+        public Task UploadStringAsFileToContiainerAsync(string podName, string container, string stringData, string fileName, string remoteRoot, int packetSize, IProgress<(long, long)>? progress = null)
         {
             return this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
             {

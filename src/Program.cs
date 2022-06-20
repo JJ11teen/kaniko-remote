@@ -2,7 +2,9 @@
 using System.Diagnostics;
 using KanikoRemote.Builder;
 using KanikoRemote.CLI;
+using KanikoRemote.Config;
 using KanikoRemote.K8s;
+using KanikoRemote.Tagger;
 using Microsoft.Extensions.Logging;
 
 namespace KanikoRemote
@@ -31,22 +33,25 @@ namespace KanikoRemote
             return await rootCommand.InvokeAsync(args);
         }
 
-        static async Task Build(BuilderArguments buildCommandArgs, ILoggerFactory loggerFactory)
+        static async Task Build(BuildArguments buildCommandArgs, ILoggerFactory loggerFactory)
         {
             var logger = loggerFactory.CreateLogger<Program>();
 
-            var config = new Config(loggerFactory);
+            var config = ConfigLoader.LoadConfig(loggerFactory);
 
-            var k8sClient = new NamespacedClient(
-                options: config.KubernetesOptions,
-                logger: loggerFactory.CreateLogger<NamespacedClient>());
+            var tagger = new Tagger.Tagger(config.Tagger, loggerFactory.CreateLogger<Tagger.Tagger>());
+
+            var k8sClient = new NamespacedClient(config.Kubernetes, loggerFactory.CreateLogger<NamespacedClient>());
 
             var timer = new Stopwatch();
             await using (var builder = new Builder.Builder(
                 k8sClient: k8sClient,
+                contextLocation: buildCommandArgs.ContextLocation,
+                dockerfile: buildCommandArgs.RelativeDockfilePath,
+                destinationTags: tagger.TransformTags(buildCommandArgs.DestinationTags),
                 authorisers: config.Authorisers,
-                configOptions: config.BuilderOptions,
-                arguments: buildCommandArgs,
+                kanikoPassthroughArgs: buildCommandArgs.SerialiseKanikoPassthroughArgs(),
+                config: config.Builder,
                 logger: loggerFactory.CreateLogger<Builder.Builder>()))
             {
                 var podName = await builder.Initialise();
@@ -61,6 +66,8 @@ namespace KanikoRemote
                 var imageDigest = await builder.Build();
                 timer.Stop();
                 logger.LogInformation($"Builder {k8sClient.Namespace}/{podName} complete in {timer.Elapsed.TotalSeconds:F2} seconds");
+                logger.LogInformation($"Built image digest: {imageDigest}");
+                logger.LogInformation("The newly built image has been pushed to your container registry and is not available locally");
             }
         }
     }

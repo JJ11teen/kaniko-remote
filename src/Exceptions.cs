@@ -19,7 +19,6 @@ namespace KanikoRemote
             sb.Append(this.GetType().ToString());
             sb.Append(": ");
             sb.AppendLine(this.Message);
-            sb.Append("Relevant config section: ");
             sb.AppendLine(node.ToString());
             return sb.ToString();
         }

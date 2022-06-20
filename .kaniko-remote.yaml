@@ -3,8 +3,9 @@ kubernetes:
 builder:
   name: lucas
   # keepPod: true
-tag:
-  prepend: eliiza.azurecr.io/lucas-dev
+  # kanikoImage: gcr.io/kaniko-project/executor:debug
+tags:
+  prefix: eliiza.azurecr.io/lucas-dev
 auth:
   - type: acr
     registry: eliiza.azurecr.io

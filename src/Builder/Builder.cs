@@ -1,7 +1,9 @@
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s.Models;
 using KanikoRemote.Auth;
+using KanikoRemote.Config;
 using KanikoRemote.K8s;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.Logging;
@@ -11,15 +13,15 @@ namespace KanikoRemote.Builder
 {
     internal class Builder : IAsyncDisposable
     {
-
         private NamespacedClient k8sClient;
-        private BuilderOptions options;
-        private BuilderArguments arguments;
         private ILogger<Builder> logger;
 
         private V1Pod pod;
         private string? localContext;
         private JsonObject dockerConfig;
+        private int podStartTimeout;
+        private int podTransferPacketSize;
+        private bool keepPod;
 
         private bool podExistsInKubeApi() => !string.IsNullOrEmpty(this.pod.Metadata.Name);
         public string podNameInKube
@@ -36,38 +38,54 @@ namespace KanikoRemote.Builder
 
         public Builder(
             NamespacedClient k8sClient,
-            IList<Authoriser> authorisers,
-            BuilderOptions configOptions,
-            BuilderArguments arguments,
+            string contextLocation,
+            string? dockerfile,
+            IEnumerable<string> destinationTags,
+            IEnumerable<Authoriser> authorisers,
+            IEnumerable<string> kanikoPassthroughArgs,
+            BuilderConfiguration config,
             ILogger<Builder> logger)
         {
             this.k8sClient = k8sClient;
-            this.options = configOptions;
-            this.arguments = arguments;
             this.logger = logger;
 
+            this.podStartTimeout = config.PodStartTimeout;
+            this.podTransferPacketSize = config.PodTransferPacketSize;
+            this.keepPod = config.KeepPod == "true";
+
             this.pod = Specs.GeneratePodSpec(
-                name: options.Name,
-                cpu: options.CPU,
-                memory: options.Memory,
-                kanikoImage: options.KanikoImage,
-                setupImage: options.SetupImage,
-                additionalLabels: options.AdditionalLabels,
-                additionalAnnotations: options.AdditionalAnnotations);
+                name: config.Name,
+                cpu: config.CPU,
+                memory: config.Memory,
+                kanikoImage: config.KanikoImage,
+                setupImage: config.SetupImage,
+                additionalLabels: config.AdditionalLabels,
+                additionalAnnotations: config.AdditionalAnnotations);
 
             IEnumerable<string> kanikoArgs;
-            var urlsToAuth = new List<string>(arguments.DestinationTags);
-            if (ParseIsLocalContext())
+            var urlsToAuth = new List<string>(destinationTags);
+            if (ParseIsLocalContext(contextLocation))
             {
-                this.localContext = arguments.ContextLocation;
-                kanikoArgs = GenerateKanikoArgumentList();
+                this.localContext = contextLocation;
+                var localDockerfile = Path.Combine(this.localContext, dockerfile ?? "Dockerfile");
+                if (!File.Exists(localDockerfile))
+                {
+                    throw new FileNotFoundException($"Could not find dockerfile {localDockerfile}");
+                }
+                kanikoArgs = GenerateKanikoArgumentList(
+                    dockerfile,
+                    destinationTags,
+                    kanikoPassthroughArgs.Concat(config.AdditionalKanikoArgs));
                 this.pod = Specs.MountContextForExecTransfer(this.pod);
-                // TODO: check dockerfile exists
             }
             else
             {
-                kanikoArgs = GenerateKanikoArgumentList(arguments.ContextLocation);
-                urlsToAuth.Add(arguments.ContextLocation);
+                kanikoArgs = GenerateKanikoArgumentList(
+                    dockerfile,
+                    destinationTags,
+                    kanikoPassthroughArgs.Concat(config.AdditionalKanikoArgs),
+                    contextLocation);
+                urlsToAuth.Add(contextLocation);
             }
 
             var matchingAuthorisers = authorisers
@@ -91,7 +109,7 @@ namespace KanikoRemote.Builder
         {
             if (this.podExistsInKubeApi())
             {
-                if (this.options.KeepPodValue)
+                if (this.keepPod)
                 {
                     this.logger.LogWarning($"Not removing builder pod {this.podNameInKube} as 'keepPod' configured");
                 }
@@ -108,46 +126,43 @@ namespace KanikoRemote.Builder
             }
         }
 
-        private bool ParseIsLocalContext()
+        private bool ParseIsLocalContext(string contextLocation)
         {
-            // TODO: actually confirm if local & handle accordingly
-            return true;
+            if (Uri.TryCreate(contextLocation, UriKind.RelativeOrAbsolute, out var uri))
+            {
+                if (!uri.IsAbsoluteUri)
+                {
+                    this.logger.LogInformation("Local context detected, the context will be transferred directly to the builder pod.");
+                    return true;
+                }
+                else
+                {
+                    logger.LogInformation("Remote context detected, builder pod will be authorised to access configured remote storage.");
+                    return false;
+                }
+            }
+            throw new ArgumentOutOfRangeException("Unable to parse context location");
         }
 
-        private IEnumerable<string> GenerateKanikoArgumentList(string? remoteContext = null)
+        static private IEnumerable<string> GenerateKanikoArgumentList(
+            string? dockerfile,
+            IEnumerable<string> destinationTags,
+            IEnumerable<string> parsedKanikoArgs,
+            string? remoteContext = null)
         {
-            var args = new Dictionary<string, string>()
+            var args = new Dictionary<string, string?>()
             {
-                {"dockerfile", "Dockerfile"},
                 {"digest-file", "/dev/termination-log"}
             };
 
-            if (arguments.RelativeDockfilePath == null)
-            {
-                throw new ArgumentNullException("dockerfile", "Dockerfile path cannot be null");
-            }
-            args["dockerfile"] = arguments.RelativeDockfilePath;
-
-            if (arguments.Target != null)
-            {
-                args.Add("target", arguments.Target);
-            }
-            if (arguments.Platform != null)
-            {
-                args.Add("platform", arguments.Platform);
-            }
-
-            if (remoteContext != null)
-            {
-                args.Add("context", remoteContext);
-            }
+            args["dockerfile"] = dockerfile;
+            args.Add("context", remoteContext);
 
             return args
+                .Where((kvp, i) => kvp.Value != null)
                 .Select((kvp, i) => $"--{kvp.Key}={kvp.Value}")
-                .Concat(options.AdditionalKanikoArgs)
-                .Concat(arguments.MetadataLabels.Select(l => $"--label={l}"))
-                .Concat(arguments.BuildArgVariables.SelectMany(ba => new List<string>() { "--build-arg", ba }))
-                .Concat(arguments.DestinationTags.Select(d => $"--destination={d}"));
+                .Concat(destinationTags.Select(d => $"--destination={d}"))
+                .Concat(parsedKanikoArgs);
         }
 
 
@@ -163,7 +178,7 @@ namespace KanikoRemote.Builder
             await this.k8sClient.AwaitContainerRunningStateAsync(
                 podName: this.podNameInKube,
                 container: "setup",
-                timeoutSeconds: options.PodStartTimeout);
+                timeoutSeconds: this.podStartTimeout);
 
             if (this.localContext != null)
             {
@@ -180,8 +195,7 @@ namespace KanikoRemote.Builder
                 stringData: this.dockerConfig.ToJsonString(),
                 fileName: "config.json",
                 remoteRoot: "/kaniko/.docker",
-                packetSize: options.PodTransferPacketSize
-            );
+                packetSize: this.podTransferPacketSize);
 
             return this.podNameInKube;
         }
@@ -190,30 +204,61 @@ namespace KanikoRemote.Builder
         {
             var contextMatcher = new Matcher();
             contextMatcher.AddInclude("**");
+
+            var dockerIgnorePath = Path.Combine(localContextPath, ".dockerignore");
+            if (File.Exists(dockerIgnorePath))
+            {
+                using var dockerIgnore = new StreamReader(dockerIgnorePath);
+                while (!dockerIgnore.EndOfStream)
+                {
+                    var ignorePattern = await dockerIgnore.ReadLineAsync();
+                    if (ignorePattern != null & !ignorePattern!.StartsWith("#"))
+                    {
+                        contextMatcher.AddExclude(ignorePattern);
+                    }
+                }
+            }
+
             var localFilesToSend = contextMatcher.GetResultsInFullPath(localContextPath);
 
-            // TODO: filter with dockerignore if it exists
-
-            var prog = new ProgressBar(1, "[KANIKO-REMOTE] (info) Sending context", new ProgressBarOptions()
-            {
-                ProgressCharacter = '#',
-                // DenseProgressBar = true,
-                ForegroundColor = ConsoleColor.White,
-                ForegroundColorDone = ConsoleColor.White,
-                CollapseWhenFinished = false,
-                ProgressBarOnBottom = true,
-                DisableBottomPercentage = true,
-                ShowEstimatedDuration = false,
-
+            var pog = new Progress<(long, long)>(both => {
+                var percent = (int)(both.Item2 / both.Item2) * 10;
+                var sb = new StringBuilder();
+                sb.Append("Sending context to builder [");
+                sb.Append(new string('#', percent));
+                sb.Append(new string('-', 10 - percent));
+                sb.Append("] (");
+                sb.Append(both.Item1);
+                sb.Append("/");
+                sb.Append(both.Item2);
+                sb.Append(")");
+                this.logger.LogInformation(sb.ToString());
             });
+            // var prog = new ProgressBar(10, "[KANIKO-REMOTE] (info) Sending context", new ProgressBarOptions()
+            // {
+            //     ProgressCharacter = '#',
+            //     // DenseProgressBar = true,
+            //     ForegroundColor = ConsoleColor.White,
+            //     ForegroundColorDone = ConsoleColor.White,
+            //     CollapseWhenFinished = true,
+            //     ProgressBarOnBottom = true,
+            //     DisableBottomPercentage = true,
+            //     ShowEstimatedDuration = false,
+
+            // });
 
             await this.k8sClient.UploadLocalFilesToContainerAsync(
                 podName: this.podNameInKube,
                 container: "setup",
-                localFiles: localFilesToSend,
+                localRoot: localContextPath,
+                localAbsoluteFilepaths: localFilesToSend,
                 remoteRoot: "/workspace",
-                packetSize: options.PodTransferPacketSize,
-                progress: prog);
+                packetSize: this.podTransferPacketSize,
+                progress: pog);
+
+            // Helps clear out the progress bar
+            this.logger.LogInformation("");
+            this.logger.LogInformation("");
         }
 
         public async Task<string> Build()
@@ -231,8 +276,8 @@ namespace KanikoRemote.Builder
 
             if (containerState == failedStart)
             {
-                // Tail works as get -- gets logs of why kaniko failed to start
-                await foreach (var logLine in this.k8sClient.TailContainerLogsAsync(
+                // Try to get logs of why kaniko failed to start
+                await foreach (var logLine in this.k8sClient.GetContainerLogsAsync(
                     podName: this.podNameInKube,
                     container: "builder",
                     sinceSeconds: 10))
@@ -242,11 +287,12 @@ namespace KanikoRemote.Builder
                 throw new KanikoException("Kaniko failed to start, see above logs for erroneous args", failedStart.Result);
             }
 
-            // Else tail for build logs
-            await foreach (var logLine in this.k8sClient.TailContainerLogsAsync(
+            // Else tail for actual build logs
+            await foreach (var logLine in this.k8sClient.GetContainerLogsAsync(
                 podName: this.podNameInKube,
                 container: "builder",
-                sinceSeconds: 10))
+                sinceSeconds: 10,
+                tail: true))
             {
                 this.logger.LogInformation(logLine);
             }

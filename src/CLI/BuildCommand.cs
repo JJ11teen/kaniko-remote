@@ -4,7 +4,7 @@ using KanikoRemote.Builder;
 
 namespace KanikoRemote.CLI
 {
-    internal class BuildCommandBinder : BinderBase<BuilderArguments>
+    internal class BuildCommandBinder : BinderBase<BuildArguments>
     {
         private Option<IList<string>> tags;
         private Option<string?> file;
@@ -23,8 +23,7 @@ namespace KanikoRemote.CLI
                 description: "Name and tag in the \"name:tag\" format");
             file = new Option<string?>(
                 aliases: new string[] { "-f", "--file" },
-                description: "Path to the dockerfile within context (default \"Dockerfile\")",
-                getDefaultValue: () => "Dockerfile");
+                description: "Path to the dockerfile within context (default \"Dockerfile\")");
             buildArgs = new Option<IList<string>>(
                 name: "--build-arg",
                 description: "Set build-time ARG variables");
@@ -58,9 +57,9 @@ namespace KanikoRemote.CLI
             commandToBind.AddOption(iidFile);
             commandToBind.AddArgument(path);
         }
-        protected override BuilderArguments GetBoundValue(BindingContext bindingContext)
+        protected override BuildArguments GetBoundValue(BindingContext bindingContext)
         {
-            return new BuilderArguments(bindingContext.ParseResult.GetValueForArgument(path))
+            return new BuildArguments(bindingContext.ParseResult.GetValueForArgument(path))
             {
                 DestinationTags = bindingContext.ParseResult.GetValueForOption(tags) ?? new List<string>(),
                 RelativeDockfilePath = bindingContext.ParseResult.GetValueForOption(file),
