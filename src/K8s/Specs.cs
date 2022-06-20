@@ -39,7 +39,7 @@ namespace KanikoRemote.K8s
             labels["kaniko-remote/builder-name"] = name;
 
             var annotations = new Dictionary<string, string>(additionalAnnotations);
-            labels["kanaiko-remote/version"] = Program.GetVersionString();
+            labels["kanaiko-remote/version"] = Program.GetVersionString().Replace("+", "-");
 
             return new V1Pod
             {
