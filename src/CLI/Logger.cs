@@ -1,4 +1,6 @@
 using System.CommandLine.Binding;
+using System.Text.Json.Serialization;
+using k8s.Models;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Logging.Console;
@@ -17,6 +19,13 @@ namespace KanikoRemote.CLI
             return loggerFactory;
         }
     }
+
+    [JsonSourceGenerationOptions(
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(V1ContainerState))]
+    [JsonSerializable(typeof(V1ContainerStateTerminated))]
+    internal partial class LoggerSerialiserContext : JsonSerializerContext { }
 
     internal sealed class KanikoRemoteConsoleFormatter : ConsoleFormatter
     {

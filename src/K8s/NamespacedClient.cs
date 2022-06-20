@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.IO.Compression;
 using System.Text.Json;
 using KanikoRemote.Config;
+using KanikoRemote.CLI;
 
 namespace KanikoRemote.K8s
 {
@@ -110,7 +111,7 @@ namespace KanikoRemote.K8s
         {
             await foreach (var state in this.WatchContainerStatesAsync(podName, container, timeoutSeconds))
             {
-                this.logger.LogDebug($"Waiting for container '{container}' in pod '{podName}' to reach running state, current state: {JsonSerializer.Serialize(state)}");
+                this.logger.LogDebug($"Waiting for container '{container}' in pod '{podName}' to reach running state, current state: {JsonSerializer.Serialize(state, typeof(V1ContainerState), LoggerSerialiserContext.Default)}");
                 if (state.Running != null)
                 {
                     return state.Running;
@@ -124,7 +125,7 @@ namespace KanikoRemote.K8s
         {
             await foreach (var state in this.WatchContainerStatesAsync(podName, container, timeoutSeconds))
             {
-                this.logger.LogDebug($"Waiting for container '{container}' in pod '{podName}' to reach terminated state, current state: {JsonSerializer.Serialize(state)}");
+                this.logger.LogDebug($"Waiting for container '{container}' in pod '{podName}' to reach terminated state, current state: {JsonSerializer.Serialize(state, typeof(V1ContainerState), LoggerSerialiserContext.Default)}");
                 if (state.Terminated != null)
                 {
                     return state.Terminated;
