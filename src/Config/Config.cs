@@ -8,6 +8,14 @@ namespace KanikoRemote.Config
 {
     internal readonly record struct Config(KubernetesConfiguration Kubernetes, BuilderConfiguration Builder, TaggerConfiguration Tagger, IList<Authoriser> Authorisers);
 
+    [JsonSourceGenerationOptions(
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(KubernetesConfiguration))]
+    [JsonSerializable(typeof(BuilderConfiguration))]
+    [JsonSerializable(typeof(TaggerConfiguration))]
+    internal partial class ConfigSerialiserContext : JsonSerializerContext { }
+
     internal class ConfigLoader
     {
         private const string ConfigLocationEnvVar = "KANIKO_REMOTE_CONFIG";
@@ -62,7 +70,7 @@ namespace KanikoRemote.Config
             
             if (json.Count > 0)
             {
-                throw new InvalidConfigException("Allowed top level options are 'kubernetes', 'builder', 'tags' and 'auth'", json);
+                throw new InvalidConfigException("Allowed top level options are 'kubernetes', 'builder', 'tags' and 'auth'", json.ToJsonString());
             }
 
             if (config.Authorisers.Count == 0)
@@ -79,19 +87,20 @@ namespace KanikoRemote.Config
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 ReadCommentHandling = JsonCommentHandling.Skip,
                 AllowTrailingCommas = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.Never
+                DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+                
             };
 
             if (rootConfig.Remove(sectionName, out var sectionNode))
             {
-                var deserialised = sectionNode.Deserialize<T>(jsonOptions);
+                T? deserialised = (T?)JsonSerializer.Deserialize(sectionNode, typeof(T), ConfigSerialiserContext.Default);
                 if (sectionNode == null || deserialised == null)
                 {
-                    throw new InvalidConfigException($"Empty configuration section '{sectionName}'", rootConfig);
+                    throw new InvalidConfigException($"Empty configuration section '{sectionName}'", rootConfig.ToJsonString());
                 }
                 if (deserialised.HasExtraJson)
                 {
-                    throw new InvalidConfigException($"Unknown properties in '{sectionName}'", sectionNode);
+                    throw new InvalidConfigException($"Unknown properties in '{sectionName}'", sectionNode.ToJsonString());
                 }
                 return deserialised;
             }
@@ -108,7 +117,7 @@ namespace KanikoRemote.Config
                 {
                     if (authJsonNode == null)
                     {
-                        throw new InvalidConfigException($"'auth' must be an array of non empty options", authNode!);
+                        throw new InvalidConfigException($"'auth' must be an array of non empty options", authNode.ToJsonString());
                     }
 
                     var authOption = authJsonNode.AsObject();
@@ -125,7 +134,7 @@ namespace KanikoRemote.Config
                     }
                     else
                     {
-                        throw new InvalidConfigException($"Unknown auth type {authType}", authOption);
+                        throw new InvalidConfigException($"Unknown auth type {authType}", authOption.ToJsonString());
                     }
 
                     authorisers.Add(auth);

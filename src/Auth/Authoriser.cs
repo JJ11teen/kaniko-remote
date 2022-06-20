@@ -31,13 +31,13 @@ namespace KanikoRemote.Auth
                 }
                 else if (mountStr != "onMatch")
                 {
-                    throw new InvalidConfigException($"auth 'mount' must be one of 'onMatch' or 'always'", options);
+                    throw new InvalidConfigException($"auth 'mount' must be one of 'onMatch' or 'always'", options.ToJsonString());
                 }
             }
 
             if ((url != null && alwaysMount) || (url == null && !alwaysMount))
             {
-                throw new InvalidConfigException($"auth 'url' must be set unless 'mount' set to 'always'", options);
+                throw new InvalidConfigException($"auth 'url' must be set unless 'mount' set to 'always'", options.ToJsonString());
             }
             this.URLToMatch = url;
         }

@@ -2,9 +2,9 @@ namespace KanikoRemote.Config
 {
     internal record TaggerConfiguration : ConfigurableSection
     {
-        public string? Default { get; init; }
-        public string? Static { get; init; }
-        public string? Prefix { get; init; }
-        public SortedDictionary<string, string> Regexes { get; init; } = new SortedDictionary<string, string>();
+        public string? Default { get; set; }
+        public string? Static { get; set; }
+        public string? Prefix { get; set; }
+        public SortedDictionary<string, string> Regexes { get; set; } = new SortedDictionary<string, string>();
     }
 }

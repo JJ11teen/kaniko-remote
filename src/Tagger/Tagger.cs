@@ -27,7 +27,7 @@ namespace KanikoRemote.Tagger
 
             if (this.hasStatic && (this.hasPrefix || this.hasDefault || this.hasRegex))
             {
-                throw new InvalidConfigException("No other tags options may be configured when 'static' is set", JsonSerializer.SerializeToNode(this.config)!);
+                throw new InvalidConfigException("No other tags options may be configured when 'static' is set", JsonSerializer.Serialize(this.config, typeof(TaggerConfiguration), ConfigSerialiserContext.Default)!);
             }
         }
 

@@ -38,7 +38,7 @@ namespace KanikoRemote.Auth
                     var secret = env.Single().Value?.GetValue<string>();
                     if (secret == null)
                     {
-                        throw new InvalidConfigException("Invalid 'fromSecret' value", env);
+                        throw new InvalidConfigException("Invalid 'fromSecret' value", env.ToJsonString());
                     }
                     this.mountedEnvs.Add(secret, ResourceKind.Secret);
                 }
@@ -47,7 +47,7 @@ namespace KanikoRemote.Auth
                     var configMap = env.Single().Value?.GetValue<string>();
                     if (configMap == null)
                     {
-                        throw new InvalidConfigException("Invalid 'fromConfigMap' value", env);
+                        throw new InvalidConfigException("Invalid 'fromConfigMap' value", env.ToJsonString());
                     }
                     this.mountedEnvs.Add(configMap, ResourceKind.ConfigMap);
                 }
@@ -57,17 +57,17 @@ namespace KanikoRemote.Auth
                     var rawValue = env.Single(p => p.Key == "value").Value?.GetValue<string>();
                     if (rawName == null)
                     {
-                        throw new InvalidConfigException("Invalid 'name' value", env);
+                        throw new InvalidConfigException("Invalid 'name' value", env.ToJsonString());
                     }
                     if (rawValue == null)
                     {
-                        throw new InvalidConfigException("Invalid 'value' value", env);
+                        throw new InvalidConfigException("Invalid 'value' value", env.ToJsonString());
                     }
                     this.rawEnvVars.Add(rawName, rawValue);
                 }
                 else
                 {
-                    throw new InvalidConfigException($"Env must only have 'fromSecret' or 'fromConfigMap' or ('name' and 'value')", env);
+                    throw new InvalidConfigException($"Env must only have 'fromSecret' or 'fromConfigMap' or ('name' and 'value')", env.ToJsonString());
                 }
             }
             foreach (var volNode in options["vol"]?.AsArray() ?? new JsonArray())
@@ -77,13 +77,13 @@ namespace KanikoRemote.Auth
 
                 if (vol.Count != 2 || !vol.Any(p => p.Key == "mountPath"))
                 {
-                    throw new InvalidConfigException($"env must have 'mountPath' and ('fromSecret' or 'fromConfigMap')", vol);
+                    throw new InvalidConfigException($"env must have 'mountPath' and ('fromSecret' or 'fromConfigMap')", vol.ToJsonString());
                 }
 
                 var mountPath = vol.Single(p => p.Key == "mountPath").Value?.GetValue<string>();
                 if (mountPath == null)
                 {
-                    throw new InvalidConfigException($"Invalid 'mountPath' value", vol);
+                    throw new InvalidConfigException($"Invalid 'mountPath' value", vol.ToJsonString());
                 }
 
                 if (vol.Any(p => p.Key == "fromSecret"))
@@ -91,7 +91,7 @@ namespace KanikoRemote.Auth
                     var secret = vol.Single(p => p.Key == "fromSecret").Value?.GetValue<string>();
                     if (secret == null)
                     {
-                        throw new InvalidConfigException("Invalid 'fromSecret' value", vol);
+                        throw new InvalidConfigException("Invalid 'fromSecret' value", vol.ToJsonString());
                     }
                     this.mountedVols.Add(secret, Tuple.Create(mountPath, ResourceKind.Secret));
                 }
@@ -100,13 +100,13 @@ namespace KanikoRemote.Auth
                     var configMap = vol.Single(p => p.Key == "fromConfigMap").Value?.GetValue<string>();
                     if (configMap == null)
                     {
-                        throw new InvalidConfigException("Invalid 'fromConfigMap' value", vol);
+                        throw new InvalidConfigException("Invalid 'fromConfigMap' value", vol.ToJsonString());
                     }
                     this.mountedVols.Add(configMap, Tuple.Create(mountPath, ResourceKind.Secret));
                 }
                 else
                 {
-                    throw new InvalidConfigException($"Env must have 'mountPath' and ('fromSecret' or 'fromConfigMap')", vol);
+                    throw new InvalidConfigException($"Env must have 'mountPath' and ('fromSecret' or 'fromConfigMap')", vol.ToJsonString());
                 }
             }
         }

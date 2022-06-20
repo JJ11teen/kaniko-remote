@@ -2,8 +2,8 @@ namespace KanikoRemote.Config
 {
     internal record KubernetesConfiguration : ConfigurableSection
     {
-        public string? Kubeconfig { get; init; }
-        public string? Context { get; init; }
-        public string Namespace { get; init; } = "default";
+        public string? Kubeconfig { get; set; }
+        public string? Context { get; set; }
+        public string Namespace { get; set; } = "default";
     }
 }

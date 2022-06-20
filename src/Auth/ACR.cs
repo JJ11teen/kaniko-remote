@@ -22,7 +22,7 @@ namespace KanikoRemote.Auth
                 {
                     if (this.AlwaysMount())
                     {
-                        throw new InvalidConfigException($"Invalid configuration for ACR auth, must have 'registry' specified or parsable from url", options);
+                        throw new InvalidConfigException($"Invalid configuration for ACR auth, must have 'registry' specified or parsable from url", options.ToJsonString());
                     }
                     this.registryHostname = new UriBuilder(this.URLToMatch!).Host;
                 }
@@ -30,7 +30,7 @@ namespace KanikoRemote.Auth
             }
             catch (KeyNotFoundException)
             {
-                throw new InvalidConfigException($"Invalid configuration for ACR auth", options);
+                throw new InvalidConfigException($"Invalid configuration for ACR auth", options.ToJsonString());
             }
         }
 

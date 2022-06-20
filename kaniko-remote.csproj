@@ -7,10 +7,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RepositoryUrl>https://www.github.com/JJ11teen/kaniko-remote</RepositoryUrl>
-    <!-- <PublishSingleFile>true</PublishSingleFile>
+    <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <PublishTrimmed>true</PublishTrimmed>
-    <RuntimeIdentifier>linux-x64</RuntimeIdentifier> -->
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
   </PropertyGroup>
 
   <ItemGroup>
