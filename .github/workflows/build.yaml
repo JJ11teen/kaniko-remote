@@ -26,6 +26,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Setup dotnet
+      - name: Check outputs
+        run: echo ${{ steps.vars.outputs.sha_short }}
         uses: actions/setup-dotnet@v1
         with:
           dotnet-version: 6.0.x
@@ -43,9 +45,12 @@ jobs:
         run: |
           dotnet publish -r ${{ matrix.runtime }} -o dist
           # "artifacts" are zipped by github, will probably need this for release "assets" tho:
-          # tar -czf kaniko-remote-${{ env.GITHUB_SHA::8 }}-${{ matrix.runtime }}.tar.gz -C ./dist/ .
+          # tar -czf kaniko-remote-${{ github.sha::8 }}-${{ matrix.runtime }}.tar.gz -C ./dist/ .
+      - name: Get version string
+        id: version_step
+        run: echo "::set-output name=version::$(dist/kaniko-remote version)"
       - name: Archive builds
         uses: actions/upload-artifact@v3
         with:
-          name: kaniko-remote-${{ env.GITHUB_SHA::8 }}-${{ matrix.runtime }}
+          name: kaniko-remote-${{ steps.version_step.outputs.version }}-${{ matrix.runtime }}
           path: dist/kaniko-remote
