@@ -40,7 +40,7 @@ namespace KanikoRemote
             var versionCommand = new Command("version", "Show the kaniko-remote version information");
             versionCommand.SetHandler((loggerFactory) => {
                 var logger = loggerFactory.CreateLogger<Program>();
-                logger.LogWarning($"kaniko-remote version {GetVersionString()}");
+                logger.LogWarning(new EventId(1000, "version"), GetVersionString());
             }, loggerBinder);
 
             rootCommand.AddCommand(buildCommand);

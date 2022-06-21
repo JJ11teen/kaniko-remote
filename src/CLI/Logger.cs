@@ -27,9 +27,14 @@ namespace KanikoRemote.CLI
             LogLevel.Information, LogLevel.Warning
         };
 
-        public List<string> OverwritableLogs { get; set; } = new()
+        public List<string> OverwritableEvents { get; set; } = new()
         {
             "progress"
+        };
+
+        public List<string> RawEvents { get; set; } = new()
+        {
+            "version"
         };
     }
 
@@ -89,6 +94,12 @@ namespace KanikoRemote.CLI
             }
 
             LoggerConfiguration config = _getCurrentConfig();
+            if (eventId.Name != null && config.RawEvents.Contains(eventId.Name))
+            {
+                Console.WriteLine(formatter(state, exception));
+                return;
+            }
+            
             var (logLevelText, foreColor, backColor) = GetColoredLogLevel(logLevel);
             
             Console.Write("[KANIKO-REMOTE] (");
@@ -106,7 +117,7 @@ namespace KanikoRemote.CLI
             Console.Write(") ");
 
             var message = formatter(state, exception);
-            if (eventId.Name != null && config.OverwritableLogs.Contains(eventId.Name))
+            if (eventId.Name != null && config.OverwritableEvents.Contains(eventId.Name))
             {
                 Console.Write(message);
                 Console.Write("\r");
