@@ -9,6 +9,15 @@ jobs:
   build:
     runs-on: ubuntu-latest
     environment: lucas_env
+    strategy:
+      matrix:
+       include:
+        - runtime: "linux-x64"
+        - runtime: "linux-musl-x64"
+        - runtime: "linux-arm"
+        - runtime: "linux-arm64"
+        - runtime: "osx-x64"
+        - runtime: "osx-arm64"
     steps:
       - uses: actions/checkout@v2
       - name: Setup dotnet
@@ -25,20 +34,10 @@ jobs:
         run: |
           echo $KUBECONFIG | base64 -d > .kube/config
           dotnet test --no-build --verbosity normal
-      - name: Build self-contained apps
+      - name: Build runtime specific binary
         run: |
-          dotnet publish -r linux-x64 -o dist
-          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.linux-x64
-          dotnet publish -r linux-musl-x64 -o dist
-          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.linux-musl-x64
-          dotnet publish -r linux-arm -o dist
-          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.linux-arm
-          dotnet publish -r linux-arm64 -o dist
-          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.linux-arm64
-          dotnet publish -r osx-x64 -o dist
-          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.osx-x64
-          dotnet publish -r osx-arm64 -o dist
-          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.osx-arm64
+          dotnet publish -r ${{ matrix.runtime }} -o dist
+          tar -czf kaniko-remote-${GITHUB_SHA::8}-$${{ matrix.runtime }}.tar.gz -C ./dist/ .
       - name: Archive builds
         uses: actions/upload-artifact@v3
         with:
