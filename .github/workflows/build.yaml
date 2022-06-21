@@ -12,12 +12,17 @@ jobs:
     strategy:
       matrix:
        include:
-        - runtime: "linux-x64"
-        - runtime: "linux-musl-x64"
-        - runtime: "linux-arm"
-        - runtime: "linux-arm64"
-        - runtime: "osx-x64"
-        - runtime: "osx-arm64"
+        - runtime: linux-x64
+        - runtime: linux-musl-x64
+        - runtime: linux-arm
+        - runtime: linux-arm64
+        - runtime: win10-x64
+        - runtime: win10-x86
+        - runtime: win10-arm
+        - runtime: win10-arm64
+        - runtime: osx-x64
+        - runtime: osx-arm64
+
     steps:
       - uses: actions/checkout@v2
       - name: Setup dotnet
