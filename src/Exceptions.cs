@@ -7,41 +7,30 @@ using KanikoRemote.CLI;
 
 namespace KanikoRemote
 {
-    internal class InvalidConfigException : Exception
+    internal class KanikoRemoteException : Exception
     {
-        private string relevantJson;
-        public InvalidConfigException(string message, string relevantJson) : base(message)
-        {
-            this.relevantJson = relevantJson;
-        }
+        public KanikoRemoteException(params string[] messages) : base(string.Join("\n", messages)) { }
 
-        public override string ToString()
-        {
-            var sb = new StringBuilder();
-            sb.Append(this.GetType().ToString());
-            sb.AppendLine(this.Message);
-            sb.AppendLine(relevantJson);
-            return sb.ToString();
-        }
+        // KanikoRemote specific exceptions don't show stack traces
+        public override string? StackTrace => null;
+    }
+    internal class InvalidConfigException : KanikoRemoteException
+    {
+        public InvalidConfigException(string message, string relevantJson) : base(message, relevantJson) { }
     }
 
-    internal class KanikoException : Exception
+    internal class KubernetesPermissionException : KanikoRemoteException
     {
-        private V1ContainerStateTerminated terminatedContainerState;
-        public KanikoException(string message, V1ContainerStateTerminated terminatedContainerState) : base(message)
-        {
-            this.terminatedContainerState = terminatedContainerState;
-        }
+        private const string RequiredPermissionsText = @"kaniko-remote requires: create, get, watch, delete for pods, pods/exec, pods/log";
+        public KubernetesPermissionException(string message): base(message, RequiredPermissionsText) { }
+    }
 
-        public override string ToString()
-        {
-            var sb = new StringBuilder();
-            sb.Append(this.GetType().ToString());
-            sb.Append(": ");
-            sb.AppendLine(this.Message);
-            sb.Append("Terminated container state: ");
-            sb.AppendLine(JsonSerializer.Serialize(terminatedContainerState, typeof(V1ContainerStateTerminated), LoggerSerialiserContext.Default));
-            return sb.ToString();
-        }
+    internal class KanikoException : KanikoRemoteException
+    {
+        public KanikoException(string message, V1ContainerStateTerminated terminatedContainerState) : base(
+            message,
+            "Terminated container state: ",
+            JsonSerializer.Serialize(terminatedContainerState, typeof(V1ContainerStateTerminated), LoggerSerialiserContext.Default))
+        { }
     }
 }
