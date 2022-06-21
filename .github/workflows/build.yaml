@@ -42,9 +42,10 @@ jobs:
       - name: Build runtime specific binary
         run: |
           dotnet publish -r ${{ matrix.runtime }} -o dist
-          tar -czf kaniko-remote-${GITHUB_SHA::8}-$${{ matrix.runtime }}.tar.gz -C ./dist/ .
+          # "artifacts" are zipped by github, will probably need this for release "assets" tho:
+          # tar -czf kaniko-remote-${GITHUB_SHA::8}-${{ matrix.runtime }}.tar.gz -C ./dist/ .
       - name: Archive builds
         uses: actions/upload-artifact@v3
         with:
-          name: kaniko-remote-${GITHUB_SHA::8}-$${{ matrix.runtime }}.tar.gz
-          path: kaniko-remote-${GITHUB_SHA::8}-$${{ matrix.runtime }}.tar.gz
+          name: kaniko-remote-${GITHUB_SHA::8}-${{ matrix.runtime }}
+          path: dist
