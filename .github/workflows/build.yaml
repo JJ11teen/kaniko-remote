@@ -37,7 +37,7 @@ jobs:
         env:
           KUBECONFIG: ${{ secrets.KUBECONFIG }}
         run: |
-          echo $KUBECONFIG | base64 -d > .kube/config
+          # echo $KUBECONFIG | base64 -d > .kube/config
           dotnet test --no-build --verbosity normal
       - name: Build runtime specific binary
         run: |
