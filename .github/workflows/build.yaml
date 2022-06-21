@@ -8,19 +8,23 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     environment: lucas_env
     strategy:
       matrix:
         include:
         - runtime: linux-x64
+          os: ubuntu-latest
         # - runtime: linux-musl-x64
         # - runtime: linux-arm
         # - runtime: linux-arm64
-        # - runtime: win10-x64
+        - runtime: win10-x64
+          os: windows-latest
         # - runtime: win10-x86
         # - runtime: win10-arm
         # - runtime: win10-arm64
-        # - runtime: osx-x64
+        - runtime: osx-x64
+          os: macos-latest
         # - runtime: osx-arm64
 
     steps:
