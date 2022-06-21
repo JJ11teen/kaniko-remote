@@ -7,34 +7,39 @@ jobs:
   build:
     runs-on: ubuntu-latest
     environment: lucas_env
-    strategy:
-      matrix:
-       include:
-        # - python-version: 3.6
-        #   python-version-str: "py36"
-        # - python-version: 3.7
-        #   python-version-str: "py37"
-        # - python-version: 3.8
-        #   python-version-str: "py38"
-        - python-version: 3.9
-          python-version-str: "py39"
     steps:
       - uses: actions/checkout@v2
-      - name: Set up ${{ matrix.python-version-str }}
-        uses: actions/setup-python@v2
+      - name: Setup dotnet
+        uses: actions/setup-dotnet@v1
         with:
-          python-version: ${{ matrix.python-version }}
-      - name: Run Black
-        run: |
-          python -m pip install black
-          black --check --diff src tests
-      - name: Install dependencies, for extras and tests too
-        run: |
-          python -m pip install --upgrade pip
-          pip install .[tests]
-      - name: Test with pytest
+          dotnet-version: 6.0.x
+      - name: Restore dependencies
+        run: dotnet restore
+      - name: Build
+        run: dotnet build --no-restore
+      - name: Test
         env:
           KUBECONFIG: ${{ secrets.KUBECONFIG }}
         run: |
           echo $KUBECONFIG | base64 -d > .kube/config
-          pytest
+          dotnet test --no-build --verbosity normal
+      - name: Build self-contained apps
+        run: |
+          dotnet publish -r linux-x64 -o dist
+          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.linux-x64
+          dotnet publish -r linux-musl-x64 -o dist
+          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.linux-musl-x64
+          dotnet publish -r linux-arm -o dist
+          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.linux-arm
+          dotnet publish -r linux-arm64 -o dist
+          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.linux-arm64
+          dotnet publish -r osx-x64 -o dist
+          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.osx-x64
+          dotnet publish -r osx-arm64 -o dist
+          mv dist/kaniko-remote dist/kaniko-remote.${{ GITHUB_SHA }}.osx-arm64
+      - name: Archive builds
+        uses: actions/upload-artifact@v3
+        with:
+          name: dist
+          path: |
+            dist
