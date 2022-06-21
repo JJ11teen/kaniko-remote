@@ -1,66 +1,123 @@
+using System.Collections.Concurrent;
 using System.CommandLine.Binding;
 using System.Text.Json.Serialization;
 using k8s.Models;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Options;
 
 namespace KanikoRemote.CLI
 {
-    internal class LoggingBinder : BinderBase<ILoggerFactory>
+    internal class LoggerBinder : BinderBase<ILoggerFactory>
     {
-        protected override ILoggerFactory GetBoundValue(BindingContext bindingContext)
-        {
-            ILoggerFactory loggerFactory = LoggerFactory.Create(
-                builder => builder
-                    .AddConsole(options => options.FormatterName = "kaniko-remote")
-                    .AddConsoleFormatter<KanikoRemoteConsoleFormatter, ConsoleFormatterOptions>());
+        private static readonly ILoggerFactory _loggerFactory = LoggerFactory.Create(builder => {
+            builder.AddProvider(new ColorConsoleLoggerProvider());
+        });
 
-            return loggerFactory;
+        protected override ILoggerFactory GetBoundValue(BindingContext bindingContext) => _loggerFactory;
+    }
+
+    public class LoggerConfiguration
+    {
+        public int EventId { get; set; }
+
+        public bool ColorEnabled { get; set; }
+
+        public List<LogLevel> LogLevels { get; set; } = new()
+        {
+            LogLevel.Information, LogLevel.Warning
+        };
+
+        public List<string> OverwritableLogs { get; set; } = new()
+        {
+            "progress"
+        };
+    }
+
+    internal sealed class ColorConsoleLoggerProvider : ILoggerProvider
+    {
+        private readonly IDisposable? _onChangeToken;
+        private LoggerConfiguration _currentConfig;
+        private readonly ConcurrentDictionary<string, Logger> _loggers =
+            new(StringComparer.OrdinalIgnoreCase);
+
+
+        public ColorConsoleLoggerProvider()
+        {
+            _currentConfig = new LoggerConfiguration();
+            _onChangeToken = null;
+        }
+
+        public ColorConsoleLoggerProvider(
+            IOptionsMonitor<LoggerConfiguration> config)
+        {
+            _currentConfig = config.CurrentValue;
+            _onChangeToken = config.OnChange(updatedConfig => _currentConfig = updatedConfig);
+        }
+
+        public ILogger CreateLogger(string categoryName) =>
+            _loggers.GetOrAdd(categoryName, name => new Logger(name, GetCurrentConfig));
+
+        private LoggerConfiguration GetCurrentConfig() => _currentConfig;
+
+        public void Dispose()
+        {
+            _loggers.Clear();
+            _onChangeToken?.Dispose();
         }
     }
 
-    [JsonSourceGenerationOptions(
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
-    [JsonSerializable(typeof(V1ContainerState))]
-    [JsonSerializable(typeof(V1ContainerStateTerminated))]
-    internal partial class LoggerSerialiserContext : JsonSerializerContext { }
-
-    internal sealed class KanikoRemoteConsoleFormatter : ConsoleFormatter
+    internal class Logger : ILogger
     {
-        public static readonly EventId OverwritableEvent = new EventId(2002, "overwritable");
+        private readonly string _name;
+        private readonly Func<LoggerConfiguration> _getCurrentConfig;
 
-        public KanikoRemoteConsoleFormatter() : base("kaniko-remote") { }
+        public Logger(string name, Func<LoggerConfiguration> getCurrentConfig) => (_name, _getCurrentConfig) = (name, getCurrentConfig);
 
-        public override void Write<TState>(in LogEntry<TState> logEntry, IExternalScopeProvider scopeProvider, TextWriter textWriter)
+        public IDisposable BeginScope<TState>(TState state) => default!;
+
+        public bool IsEnabled(LogLevel logLevel) => _getCurrentConfig().LogLevels.Contains(logLevel);
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
         {
-            string? message = logEntry.Formatter?.Invoke(logEntry.State, logEntry.Exception);
-
-            if (message is null)
+            if (!IsEnabled(logLevel))
             {
                 return;
             }
 
-            LogLevel logLevel = logEntry.LogLevel;
-            var (logLevelString, foreColor, backColor) = GetLogLevel(logLevel);
-
-            textWriter.Write("[KANIKO-REMOTE] (");
-            textWriter.WriteWithColor(logLevelString, foreColor, backColor);
-            textWriter.Write(") ");
-
-            if (logEntry.EventId == OverwritableEvent)
+            LoggerConfiguration config = _getCurrentConfig();
+            var (logLevelText, foreColor, backColor) = GetColoredLogLevel(logLevel);
+            
+            Console.Write("[KANIKO-REMOTE] (");
+            if (config.ColorEnabled)
             {
-                textWriter.Write(message);
-                textWriter.Write("\r");
+                Console.ForegroundColor = foreColor;
+                Console.BackgroundColor = backColor;
+            }
+            Console.Write(logLevelText);
+            if (config.ColorEnabled)
+            {
+                Console.ForegroundColor = ConsoleColor.Gray;
+                Console.BackgroundColor = ConsoleColor.Black;
+            }
+            Console.Write(") ");
+
+            var message = formatter(state, exception);
+            if (eventId.Name != null && config.OverwritableLogs.Contains(eventId.Name))
+            {
+                Console.Write(message);
+                Console.Write("\r");
             }
             else
             {
-                textWriter.WriteLine(message);
+                Console.WriteLine(message);
             }
         }
 
-        private static (string, ConsoleColor, ConsoleColor) GetLogLevel(LogLevel logLevel)
+        private static (string, ConsoleColor, ConsoleColor) GetColoredLogLevel(LogLevel logLevel)
         {
             return logLevel switch
             {
@@ -73,85 +130,12 @@ namespace KanikoRemote.CLI
                 _ => throw new ArgumentOutOfRangeException(nameof(logLevel))
             };
         }
-
     }
-    public static class TextWriterExtensions
-    {
-        const string DefaultForegroundColor = "\x1B[39m\x1B[22m";
-        const string DefaultBackgroundColor = "\x1B[49m";
 
-        public static void WriteWithColor(
-            this TextWriter textWriter,
-            string message,
-            ConsoleColor? foreground,
-            ConsoleColor? background)
-        {
-            // Order:
-            //   1. background color
-            //   2. foreground color
-            //   3. message
-            //   4. reset foreground color
-            //   5. reset background color
-
-            var backgroundColor = background.HasValue ? GetBackgroundColorEscapeCode(background.Value) : null;
-            var foregroundColor = foreground.HasValue ? GetForegroundColorEscapeCode(foreground.Value) : null;
-
-            if (backgroundColor != null)
-            {
-                textWriter.Write(backgroundColor);
-            }
-            if (foregroundColor != null)
-            {
-                textWriter.Write(foregroundColor);
-            }
-
-            textWriter.Write(message);
-
-            if (foregroundColor != null)
-            {
-                textWriter.Write(DefaultForegroundColor);
-            }
-            if (backgroundColor != null)
-            {
-                textWriter.Write(DefaultBackgroundColor);
-            }
-        }
-
-        static string GetForegroundColorEscapeCode(ConsoleColor color) =>
-            color switch
-            {
-                ConsoleColor.Black => "\x1B[30m",
-                ConsoleColor.DarkRed => "\x1B[31m",
-                ConsoleColor.DarkGreen => "\x1B[32m",
-                ConsoleColor.DarkYellow => "\x1B[33m",
-                ConsoleColor.DarkBlue => "\x1B[34m",
-                ConsoleColor.DarkMagenta => "\x1B[35m",
-                ConsoleColor.DarkCyan => "\x1B[36m",
-                ConsoleColor.Gray => "\x1B[37m",
-                ConsoleColor.Red => "\x1B[1m\x1B[31m",
-                ConsoleColor.Green => "\x1B[1m\x1B[32m",
-                ConsoleColor.Yellow => "\x1B[1m\x1B[33m",
-                ConsoleColor.Blue => "\x1B[1m\x1B[34m",
-                ConsoleColor.Magenta => "\x1B[1m\x1B[35m",
-                ConsoleColor.Cyan => "\x1B[1m\x1B[36m",
-                ConsoleColor.White => "\x1B[1m\x1B[37m",
-
-                _ => DefaultForegroundColor
-            };
-
-        static string GetBackgroundColorEscapeCode(ConsoleColor color) =>
-            color switch
-            {
-                ConsoleColor.Black => "\x1B[40m",
-                ConsoleColor.DarkRed => "\x1B[41m",
-                ConsoleColor.DarkGreen => "\x1B[42m",
-                ConsoleColor.DarkYellow => "\x1B[43m",
-                ConsoleColor.DarkBlue => "\x1B[44m",
-                ConsoleColor.DarkMagenta => "\x1B[45m",
-                ConsoleColor.DarkCyan => "\x1B[46m",
-                ConsoleColor.Gray => "\x1B[47m",
-
-                _ => DefaultBackgroundColor
-            };
-    }
+    [JsonSourceGenerationOptions(
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+    [JsonSerializable(typeof(V1ContainerState))]
+    [JsonSerializable(typeof(V1ContainerStateTerminated))]
+    internal partial class LoggerSerialiserContext : JsonSerializerContext { }
 }

@@ -238,7 +238,7 @@ namespace KanikoRemote.Builder
                 sb.Append(total / 1024);
                 sb.Append("kB)");
                 
-                this.logger.LogInformation(KanikoRemoteConsoleFormatter.OverwritableEvent, sb.ToString());
+                this.logger.LogInformation(new EventId(2000, "progress"), sb.ToString());
             });
 
             var bytesSent = await this.k8sClient.UploadLocalFilesToContainerAsync(

@@ -10,7 +10,6 @@ namespace KanikoRemote
 {
     internal class Program
     {
-
         static async Task<int> Main(string[] args)
         {
             var cts = new CancellationTokenSource();
@@ -20,14 +19,33 @@ namespace KanikoRemote
                 // e.Cancel = true;
             };
 
+            var loggerBinder = new LoggerBinder();
             var rootCommand = new RootCommand(description: @"
                 Build an image from a Dockerfile on a k8s cluster using kaniko
 
-                This tool can be explicitly invoked as 'kaniko-remote'.
-                If optionally installed, this tool can additionally be invoked as 'docker'.");
-            var buildCommandBinder = new BuildCommandBinder(rootCommand);
+                This tool matches the docker CLI usage for building container images, acting as a shim between the CLI
+                and kaniko running on a (possibly remote) kubernetes cluster. It additionally provides a no-op command
+                for docker push.");
 
-            rootCommand.SetHandler(Build, buildCommandBinder, new LoggingBinder());
+            var buildCommand = new Command("build", "Build and push an image to a repository from a Dockerfile");
+            var buildCommandBinder = new BuildCommandBinder(buildCommand);
+            buildCommand.SetHandler(Build, buildCommandBinder, loggerBinder);
+
+            var pushCommand = new Command("push", "A no-op as a successful build will push automatically");
+            pushCommand.SetHandler((loggerFactory) => {
+                var logger = loggerFactory.CreateLogger<Program>();
+                logger.LogWarning("push is a no-op as kaniko-remote pushes successful builds automatically");
+            }, loggerBinder);
+
+            var versionCommand = new Command("version", "Show the kaniko-remote version information");
+            versionCommand.SetHandler((loggerFactory) => {
+                var logger = loggerFactory.CreateLogger<Program>();
+                logger.LogWarning($"kaniko-remote version {GetVersionString()}");
+            }, loggerBinder);
+
+            rootCommand.AddCommand(buildCommand);
+            rootCommand.AddCommand(pushCommand);
+            rootCommand.AddCommand(versionCommand);
 
             return await rootCommand.InvokeAsync(args);
         }
