@@ -20,12 +20,10 @@ namespace KanikoRemote
             };
 
             var loggerBinder = new LoggerBinder();
-            var rootCommand = new RootCommand(description: @"
-                Build an image from a Dockerfile on a k8s cluster using kaniko
-
-                This tool matches the docker CLI usage for building container images, acting as a shim between the CLI
-                and kaniko running on a (possibly remote) kubernetes cluster. It additionally provides a no-op command
-                for docker push.");
+            var rootCommand = new RootCommand(description: "Build an image from a Dockerfile on a k8s cluster using kaniko\n\n"
+                + "kaniko-remote matches the docker CLI usage for building container images, "
+                + "acting as a shim between a docker build command and kaniko running on a (possibly remote) "
+                + "kubernetes cluster. It additionally provides a no-op command for docker push.");
 
             var buildCommand = new Command("build", "Build and push an image to a repository from a Dockerfile");
             var buildCommandBinder = new BuildCommandBinder(buildCommand);

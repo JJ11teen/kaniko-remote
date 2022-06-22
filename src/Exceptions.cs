@@ -21,7 +21,7 @@ namespace KanikoRemote
 
     internal class KubernetesPermissionException : KanikoRemoteException
     {
-        private const string RequiredPermissionsText = @"kaniko-remote requires: create, get, watch, delete for pods, pods/exec, pods/log";
+        private const string RequiredPermissionsText = @"kaniko-remote requires: create, get, watch, delete for pods, pods/exec, pods/log in it's configured namespace";
         public KubernetesPermissionException(string message): base(message, RequiredPermissionsText) { }
     }
 

@@ -9,6 +9,7 @@ using System.Text.Json;
 using KanikoRemote.Config;
 using KanikoRemote.CLI;
 using System.Net;
+using k8s.Autorest;
 
 namespace KanikoRemote.K8s
 {
@@ -65,35 +66,35 @@ namespace KanikoRemote.K8s
             this.Client = new Kubernetes(clientConfig);
         }
 
-        public Task<V1Pod> CreatePodAsync(V1Pod body)
+        public async Task<V1Pod> CreatePodAsync(V1Pod body)
         {
             try
             {
-                return this.Client.CreateNamespacedPodAsync(body: body, namespaceParameter: this.Namespace);
+                return await this.Client.CreateNamespacedPodAsync(body: body, namespaceParameter: this.Namespace);
             }
-            catch (k8s.Autorest.HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
+            catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to create pods in namespace {this.Namespace}");
             }
         }
-        public Task<V1Pod> ReadPodAsync(string podName)
+        public async Task<V1Pod> ReadPodAsync(string podName)
         {
             try
             {
-                return this.Client.ReadNamespacedPodAsync(name: podName, namespaceParameter: this.Namespace);
+                return await this.Client.ReadNamespacedPodAsync(name: podName, namespaceParameter: this.Namespace);
             }
-            catch (k8s.Autorest.HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
+            catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to read pods in namespace {this.Namespace}");
             }
         }
-        public Task<V1Pod> DeletePodAsync(string podName)
+        public async Task<V1Pod> DeletePodAsync(string podName)
         {
             try
             {
-                return this.Client.DeleteNamespacedPodAsync(name: podName, namespaceParameter: this.Namespace);
+                return await this.Client.DeleteNamespacedPodAsync(name: podName, namespaceParameter: this.Namespace);
             }
-            catch (k8s.Autorest.HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
+            catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to delete pods in namespace {this.Namespace}");
             }
@@ -111,7 +112,7 @@ namespace KanikoRemote.K8s
                     watch: true);
                 podUpdates = w.WatchAsync<V1Pod, V1PodList>();
             }
-            catch (k8s.Autorest.HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
+            catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to watch pods in namespace {this.Namespace}");
             }
@@ -171,7 +172,7 @@ namespace KanikoRemote.K8s
             int? sinceSeconds = null,
             bool tail = false)
         {
-            k8s.Autorest.HttpOperationResponse<Stream>? response;
+            HttpOperationResponse<Stream>? response;
             try
             {
                 response = await this.Client.CoreV1.ReadNamespacedPodLogWithHttpMessagesAsync(
@@ -181,7 +182,7 @@ namespace KanikoRemote.K8s
                     sinceSeconds: sinceSeconds,
                     follow: tail);
             }
-            catch (k8s.Autorest.HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
+            catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to get pods/log in namespace {this.Namespace}");
             }
@@ -216,7 +217,7 @@ namespace KanikoRemote.K8s
                     stderr: true,
                     tty: false).ConfigureAwait(false);
             }
-            catch (k8s.Autorest.HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
+            catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to create pods/exec in namespace {this.Namespace}");
             }

@@ -1,56 +1,66 @@
 name: Build
 
+env:
+  DOTNET_VERSION: 6.0.x
+
 on:
   push:
     branches:
     - main
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    environment: lucas_env
-    strategy:
-      matrix:
-        include:
-        - runtime: linux-x64
-          os: ubuntu-latest
-        # - runtime: linux-musl-x64
-        # - runtime: linux-arm
-        # - runtime: linux-arm64
-        - runtime: win10-x64
-          os: windows-latest
-        # - runtime: win10-x86
-        # - runtime: win10-arm
-        # - runtime: win10-arm64
-        - runtime: osx-x64
-          os: macos-latest
-        # - runtime: osx-arm64
-
+  # Also determines the version string to use
+  test-on-linux-x64:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version_step.outputs.version }}
     steps:
     - uses: actions/checkout@v2
     - name: Setup dotnet
       uses: actions/setup-dotnet@v1
       with:
-        dotnet-version: 6.0.x
+        dotnet-version: ${{ env.DOTNET_VERSION }}
     - name: Restore dependencies
       run: dotnet restore
     - name: Build
-      run: dotnet build --no-restore -r ${{ matrix.runtime }}
+      run: dotnet build --no-restore -r linux-x64
     - name: Test
       env:
         KUBECONFIG: ${{ secrets.KUBECONFIG }}
       run: |
         # echo $KUBECONFIG | base64 -d > .kube/config
         dotnet test --no-build --verbosity normal
-    - name: Build runtime specific binary
-      run: dotnet publish -r ${{ matrix.runtime }} -o dist
     - name: Get version string
       id: version_step
-      run: echo "::set-output name=version::$(dist/kaniko-remote version)"
+      run: echo "::set-output name=version::$(dotnet run -r linux-x64 -- version)"
+  build-all-platforms:
+    runs-on: ubuntu-latest
+    needs: test-on-linux-x64
+    strategy:
+      matrix:
+        include:
+        - runtime: linux-x64
+        # - runtime: linux-musl-x64
+        # - runtime: linux-arm
+        # - runtime: linux-arm64
+        - runtime: win10-x64
+        # - runtime: win10-x86
+        # - runtime: win10-arm
+        # - runtime: win10-arm64
+        - runtime: osx-x64
+        # - runtime: osx-arm64
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    - name: Build runtime specific binary
+      run: dotnet publish -r ${{ matrix.runtime }} -o dist
     - name: Archive builds
       uses: actions/upload-artifact@v3
       with:
-        name: kaniko-remote-${{ steps.version_step.outputs.version }}-${{ matrix.runtime }}
+        name: kaniko-remote-${{ needs.test-on-linux-x64.outputs.version }}-${{ matrix.runtime }}
         path: dist/kaniko-remote
 
 # "artifacts" are zipped by github, will probably need this for release "assets" tho:
