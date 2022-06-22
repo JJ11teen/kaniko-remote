@@ -33,7 +33,7 @@ jobs:
     - name: Get version string
       id: version_step
       run: echo "::set-output name=version::$(dotnet run -r linux-x64 -- version)"
-  build-all-platforms:
+  build-cross-platforms:
     runs-on: ubuntu-latest
     needs: test-on-linux-x64
     strategy:
@@ -61,7 +61,7 @@ jobs:
       uses: actions/upload-artifact@v3
       with:
         name: kaniko-remote-${{ needs.test-on-linux-x64.outputs.version }}-${{ matrix.runtime }}
-        path: dist/kaniko-remote
+        path: dist/*
 
 # "artifacts" are zipped by github, will probably need this for release "assets" tho:
 # tar -czf kaniko-remote-${{ github.sha::8 }}-${{ matrix.runtime }}.tar.gz -C ./dist/ .
