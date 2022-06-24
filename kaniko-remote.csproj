@@ -7,7 +7,6 @@
     <Authors>Lucas Sargent</Authors>
     <PackageId>JJ11teen.KanikoRemote</PackageId>
     <PackageProjectUrl>https://www.github.com/JJ11teen/kaniko-remote</PackageProjectUrl>
-    <Version>0.5</Version>
   </PropertyGroup>
 
   <PropertyGroup>
