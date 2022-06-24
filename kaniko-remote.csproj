@@ -1,12 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <Title>Kaniko Remote</Title>
+    <Description>Build an image from a Dockerfile on a k8s cluster using kaniko</Description>
+    <PackageTags>kaniko;remote;docker build;tool;kubernetes</PackageTags>
+    <Authors>Lucas Sargent</Authors>
+    <PackageId>JJ11teen.KanikoRemote</PackageId>
+    <PackageProjectUrl>https://www.github.com/JJ11teen/kaniko-remote</PackageProjectUrl>
+    <Version>0.5</Version>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <RootNamespace>KanikoRemote</RootNamespace>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
-    <RootNamespace>KanikoRemote</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <RepositoryUrl>https://www.github.com/JJ11teen/kaniko-remote</RepositoryUrl>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <RuntimeIdentifiers>linux-x64;linux-musl-x64;linux-arm;linux-arm64;win10-x64;win10-x86;win10-arm;win10-arm64;osx-x64;osx-arm64;</RuntimeIdentifiers>
