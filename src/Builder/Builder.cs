@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -22,6 +23,7 @@ namespace KanikoRemote.Builder
         private int podStartTimeout;
         private int podTransferPacketSize;
         private bool keepPod;
+        private Stopwatch timer;
 
         private bool podExistsInKubeApi() => !string.IsNullOrEmpty(this.pod.Metadata.Name);
         public string podNameInKube
@@ -35,6 +37,9 @@ namespace KanikoRemote.Builder
                 return this.pod.Metadata.Name;
             }
         }
+        public string builderName => $"{this.k8sClient.Namespace}/{this.podNameInKube}";
+
+        private string timerStr => $"{this.timer.Elapsed.TotalSeconds:F2} seconds";
 
         public Builder(
             NamespacedClient k8sClient,
@@ -52,6 +57,7 @@ namespace KanikoRemote.Builder
             this.podStartTimeout = config.PodStartTimeout;
             this.podTransferPacketSize = config.PodTransferPacketSize;
             this.keepPod = config.KeepPod == "true";
+            this.timer = new Stopwatch();
 
             this.pod = Specs.GeneratePodSpec(
                 name: config.Name,
@@ -105,7 +111,7 @@ namespace KanikoRemote.Builder
             this.logger.LogDebug($"Generated pod spec for builder: {this.pod}");
         }
 
-        async ValueTask IAsyncDisposable.DisposeAsync()
+        public async ValueTask DisposeAsync()
         {
             if (this.podExistsInKubeApi())
             {
@@ -122,7 +128,7 @@ namespace KanikoRemote.Builder
             }
             else
             {
-                logger.LogDebug("Builder not initialised, so no disposal required");
+                logger.LogInformation("Builder not initialised, so no disposal required");
             }
         }
 
@@ -165,24 +171,30 @@ namespace KanikoRemote.Builder
                 .Concat(parsedKanikoArgs);
         }
 
-
-        public async ValueTask<string> Initialise()
+        public async Task<string> Initialise(CancellationToken ct)
         {
-            this.pod = await this.k8sClient.CreatePodAsync(this.pod);
+            this.pod = await this.k8sClient.CreatePodAsync(this.pod, ct);
+            ct.ThrowIfCancellationRequested();
             this.logger.LogDebug($"Initialised builder pod with spec: {this.pod}");
+            this.logger.LogInformation($"Builder {this.builderName} created, pending scheduling");
             return this.podNameInKube;
         }
 
-        public async ValueTask<string> Setup()
+        public async ValueTask<string> Setup(CancellationToken ct)
         {
+            this.timer.Reset();
+            this.timer.Start();
             await this.k8sClient.AwaitContainerRunningStateAsync(
                 podName: this.podNameInKube,
                 container: "setup",
-                timeoutSeconds: this.podStartTimeout);
+                timeoutSeconds: this.podStartTimeout,
+                ct: ct);
+            ct.ThrowIfCancellationRequested();
 
             if (this.localContext != null)
             {
-                await this.transferLocalBuildContext(this.localContext);
+                await this.transferLocalBuildContext(this.localContext, ct);
+                ct.ThrowIfCancellationRequested();
             }
             else
             {
@@ -195,12 +207,16 @@ namespace KanikoRemote.Builder
                 stringData: this.dockerConfig.ToJsonString(),
                 fileName: "config.json",
                 remoteRoot: "/kaniko/.docker",
-                packetSize: this.podTransferPacketSize);
+                packetSize: this.podTransferPacketSize,
+                ct: ct);
+            ct.ThrowIfCancellationRequested();
 
+            this.timer.Stop();
+            this.logger.LogInformation($"Builder {this.builderName} setup in {this.timerStr}, streaming logs:");
             return this.podNameInKube;
         }
 
-        private async Task transferLocalBuildContext(string localContextPath)
+        private async Task transferLocalBuildContext(string localContextPath, CancellationToken ct)
         {
             var contextMatcher = new Matcher();
             contextMatcher.AddInclude("**");
@@ -209,15 +225,16 @@ namespace KanikoRemote.Builder
             if (File.Exists(dockerIgnorePath))
             {
                 using var dockerIgnore = new StreamReader(dockerIgnorePath);
-                while (!dockerIgnore.EndOfStream)
+                while (!dockerIgnore.EndOfStream && !ct.IsCancellationRequested)
                 {
-                    var ignorePattern = await dockerIgnore.ReadLineAsync();
+                    var ignorePattern = await dockerIgnore.ReadLineAsync().WaitAsync(ct);
                     if (ignorePattern != null & !ignorePattern!.StartsWith("#"))
                     {
                         contextMatcher.AddExclude(ignorePattern);
                     }
                 }
             }
+            ct.ThrowIfCancellationRequested();
 
             var localFilesToSend = contextMatcher.GetResultsInFullPath(localContextPath);
             var fileCount = localFilesToSend.Count();
@@ -248,35 +265,44 @@ namespace KanikoRemote.Builder
                 localAbsoluteFilepaths: localFilesToSend,
                 remoteRoot: "/workspace",
                 packetSize: this.podTransferPacketSize,
-                progress: prog);
+                progress: prog,
+                ct: ct);
+            ct.ThrowIfCancellationRequested();
 
-            this.logger.LogInformation($"Transferred {fileCount} to builder ({bytesSent / 1024}kB)".PadRight(100));
+            this.logger.LogInformation($"Transferred {fileCount} files to builder ({bytesSent / 1024}kB)".PadRight(100));
         }
 
-        public async Task<string> Build()
+        public async Task<string> Build(CancellationToken ct)
         {
+            this.timer.Reset();
+            this.timer.Start();
+            
             var started = this.k8sClient.AwaitContainerRunningStateAsync(
                 podName: this.podNameInKube,
                 container: "builder",
-                timeoutSeconds: 10);
-            var failedStart = this.k8sClient.AwaitContainerTerminatedStateAsync(
+                timeoutSeconds: 10,
+                ct: ct);
+            var failed = this.k8sClient.AwaitContainerTerminatedStateAsync(
                 podName: this.podNameInKube,
                 container: "builder",
-                timeoutSeconds: 10);
+                timeoutSeconds: 10,
+                ct: ct);
 
-            var containerState = await Task.WhenAny(started, failedStart);
+            var containerState = await Task.WhenAny(started, failed);
+            ct.ThrowIfCancellationRequested();
 
-            if (containerState == failedStart)
+            if (containerState != started)
             {
                 // Try to get logs of why kaniko failed to start
                 await foreach (var logLine in this.k8sClient.GetContainerLogsAsync(
                     podName: this.podNameInKube,
                     container: "builder",
-                    sinceSeconds: 10))
+                    sinceSeconds: 10,
+                    ct: ct))
                 {
                     this.logger.LogInformation(logLine);
                 }
-                throw new KanikoException("Kaniko failed to start, see above logs for erroneous args", failedStart.Result);
+                throw new KanikoException("Kaniko failed to start, see above logs for more information", failed.Result);
             }
 
             // Else tail for actual build logs
@@ -284,18 +310,24 @@ namespace KanikoRemote.Builder
                 podName: this.podNameInKube,
                 container: "builder",
                 sinceSeconds: 10,
-                tail: true))
+                tail: true,
+                ct: ct))
             {
                 this.logger.LogInformation(logLine);
             }
+            ct.ThrowIfCancellationRequested();
 
             var finished = await this.k8sClient.AwaitContainerTerminatedStateAsync(
                 podName: this.podNameInKube,
                 container: "builder",
-                timeoutSeconds: 10);
+                timeoutSeconds: 10,
+                ct: ct);
+            ct.ThrowIfCancellationRequested();
 
+            this.timer.Stop();
             if (finished.ExitCode == 0)
             {
+                this.logger.LogInformation($"Builder {this.builderName} complete in {this.timerStr}");
                 return finished.Message;
             }
             throw new KanikoException("Kaniko failed to build and/or push image, increase verbosity if kaniko logs are not visible above", finished);

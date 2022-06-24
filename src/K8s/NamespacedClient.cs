@@ -10,6 +10,7 @@ using KanikoRemote.Config;
 using KanikoRemote.CLI;
 using System.Net;
 using k8s.Autorest;
+using System.Runtime.CompilerServices;
 
 namespace KanikoRemote.K8s
 {
@@ -66,33 +67,42 @@ namespace KanikoRemote.K8s
             this.Client = new Kubernetes(clientConfig);
         }
 
-        public async Task<V1Pod> CreatePodAsync(V1Pod body)
+        public async Task<V1Pod> CreatePodAsync(V1Pod body, CancellationToken ct = default)
         {
             try
             {
-                return await this.Client.CreateNamespacedPodAsync(body: body, namespaceParameter: this.Namespace);
+                return await this.Client.CreateNamespacedPodAsync(
+                    body: body,
+                    namespaceParameter: this.Namespace,
+                    cancellationToken: ct);
             }
             catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to create pods in namespace {this.Namespace}");
             }
         }
-        public async Task<V1Pod> ReadPodAsync(string podName)
+        public async Task<V1Pod> ReadPodAsync(string podName, CancellationToken ct = default)
         {
             try
             {
-                return await this.Client.ReadNamespacedPodAsync(name: podName, namespaceParameter: this.Namespace);
+                return await this.Client.ReadNamespacedPodAsync(
+                    name: podName,
+                    namespaceParameter: this.Namespace,
+                    cancellationToken: ct);
             }
             catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to read pods in namespace {this.Namespace}");
             }
         }
-        public async Task<V1Pod> DeletePodAsync(string podName)
+        public async Task<V1Pod> DeletePodAsync(string podName, CancellationToken ct = default)
         {
             try
             {
-                return await this.Client.DeleteNamespacedPodAsync(name: podName, namespaceParameter: this.Namespace);
+                return await this.Client.DeleteNamespacedPodAsync(
+                    name: podName,
+                    namespaceParameter: this.Namespace,
+                    cancellationToken: ct);
             }
             catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
@@ -100,7 +110,7 @@ namespace KanikoRemote.K8s
             }
         }
 
-        private async IAsyncEnumerable<V1ContainerState> WatchContainerStatesAsync(string podName, string container, int? timeoutSeconds)
+        private async IAsyncEnumerable<V1ContainerState> WatchContainerStatesAsync(string podName, string container, int? timeoutSeconds, [EnumeratorCancellation] CancellationToken ct)
         {
             IAsyncEnumerable<(WatchEventType, V1Pod)> podUpdates;
             try
@@ -109,14 +119,15 @@ namespace KanikoRemote.K8s
                     namespaceParameter: this.Namespace,
                     fieldSelector: $"metadata.name={podName}",
                     timeoutSeconds: timeoutSeconds,
-                    watch: true);
+                    watch: true,
+                    cancellationToken: ct);
                 podUpdates = w.WatchAsync<V1Pod, V1PodList>();
             }
             catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to watch pods in namespace {this.Namespace}");
             }
-            await foreach (var (watchEventType, pod) in podUpdates)
+            await foreach (var (watchEventType, pod) in podUpdates.WithCancellation(ct))
             {
                 V1ContainerState? state;
                 try
@@ -139,9 +150,9 @@ namespace KanikoRemote.K8s
             }
         }
 
-        public async Task<V1ContainerStateRunning> AwaitContainerRunningStateAsync(string podName, string container, int? timeoutSeconds = null)
+        public async Task<V1ContainerStateRunning> AwaitContainerRunningStateAsync(string podName, string container, int? timeoutSeconds = null, CancellationToken ct = default)
         {
-            await foreach (var state in this.WatchContainerStatesAsync(podName, container, timeoutSeconds))
+            await foreach (var state in this.WatchContainerStatesAsync(podName, container, timeoutSeconds, ct))
             {
                 this.logger.LogDebug($"Waiting for container '{container}' in pod '{podName}' to reach running state, current state: {JsonSerializer.Serialize(state, typeof(V1ContainerState), LoggerSerialiserContext.Default)}");
                 if (state.Running != null)
@@ -153,9 +164,9 @@ namespace KanikoRemote.K8s
         }
 
 
-        public async Task<V1ContainerStateTerminated> AwaitContainerTerminatedStateAsync(string podName, string container, int? timeoutSeconds = null)
+        public async Task<V1ContainerStateTerminated> AwaitContainerTerminatedStateAsync(string podName, string container, int? timeoutSeconds = null, CancellationToken ct = default)
         {
-            await foreach (var state in this.WatchContainerStatesAsync(podName, container, timeoutSeconds))
+            await foreach (var state in this.WatchContainerStatesAsync(podName, container, timeoutSeconds, ct))
             {
                 this.logger.LogDebug($"Waiting for container '{container}' in pod '{podName}' to reach terminated state, current state: {JsonSerializer.Serialize(state, typeof(V1ContainerState), LoggerSerialiserContext.Default)}");
                 if (state.Terminated != null)
@@ -170,7 +181,8 @@ namespace KanikoRemote.K8s
             string podName,
             string container,
             int? sinceSeconds = null,
-            bool tail = false)
+            bool tail = false,
+            [EnumeratorCancellation] CancellationToken ct = default)
         {
             HttpOperationResponse<Stream>? response;
             try
@@ -180,26 +192,35 @@ namespace KanikoRemote.K8s
                     name: podName,
                     container: container,
                     sinceSeconds: sinceSeconds,
-                    follow: tail);
+                    follow: tail,
+                    cancellationToken: ct);
+                ct.ThrowIfCancellationRequested();
             }
             catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
                 throw new KubernetesPermissionException($"Unauthorized to get pods/log in namespace {this.Namespace}");
             }
             
-
             using (var reader = new StreamReader(response.Body))
             {
-                var line = await reader.ReadLineAsync();
-                while (line != null)
+                var line = await reader.ReadLineAsync().WaitAsync(ct);
+                while (line != null && !ct.IsCancellationRequested)
                 {
                     yield return line;
-                    line = await reader.ReadLineAsync();
+                    line = await reader.ReadLineAsync().WaitAsync(ct);
                 }
             }
+            ct.ThrowIfCancellationRequested();
         }
 
-        private async Task<long> UploadTarToContainerAsync(string podName, string container, string remoteRoot, Action<TarOutputStream> tarFunc, int packetSize, IProgress<(long, long)>? progress)
+        private async Task<long> UploadTarToContainerAsync(
+            string podName,
+            string container,
+            string remoteRoot,
+            Action<TarOutputStream> tarFunc,
+            int packetSize,
+            IProgress<(long, long)>? progress,
+            CancellationToken ct)
         {
             this.logger.LogDebug("Beginning pod data transfer");
             var remoteTempFilename = Guid.NewGuid().ToString()[..8];
@@ -215,7 +236,9 @@ namespace KanikoRemote.K8s
                     stdin: true,
                     stdout: true,
                     stderr: true,
-                    tty: false).ConfigureAwait(false);
+                    tty: false,
+                    cancellationToken: ct);
+                ct.ThrowIfCancellationRequested();
             }
             catch (HttpOperationException e) when (e.Response.StatusCode == HttpStatusCode.Forbidden)
             {
@@ -223,7 +246,6 @@ namespace KanikoRemote.K8s
             }
             var demux = new StreamDemuxer(ws);
             demux.Start();
-
             var podStream = demux.GetStream(ChannelIndex.StdOut, ChannelIndex.StdIn);
 
             var readTask = Task.Run(async () =>
@@ -231,7 +253,7 @@ namespace KanikoRemote.K8s
                 using (var podStdOut = new StreamReader(podStream, leaveOpen: true))
                 {
                     var reachedCompleteToken = false;
-                    while (!podStdOut.EndOfStream && !reachedCompleteToken)
+                    while (!podStdOut.EndOfStream && !reachedCompleteToken && !ct.IsCancellationRequested)
                     {
                         var logLine = await podStdOut.ReadLineAsync();
                         this.logger.LogDebug($"pod stdout: {logLine}");
@@ -241,12 +263,13 @@ namespace KanikoRemote.K8s
                         }
                     }
                 }
-            });
+            }, ct);
 
             long totalBytes;
             using (var podWriter = new StreamWriter(podStream, Encoding.ASCII, leaveOpen: true))
             {
-                await podWriter.WriteLineAsync($"cat <<EOF > /tmp/{remoteTempFilename}.tar.gz.b64");
+                await podWriter.WriteLineAsync($"cat <<EOF > /tmp/{remoteTempFilename}.tar.gz.b64").WaitAsync(ct);
+                ct.ThrowIfCancellationRequested();
 
                 using (var memory = new MemoryStream())
                 {
@@ -256,8 +279,9 @@ namespace KanikoRemote.K8s
                     using (var tarWriter = new TarOutputStream(gzipWriter, Encoding.UTF8))
                     {
                         tarFunc(tarWriter);
-                        await tarWriter.FlushAsync();
+                        await tarWriter.FlushAsync().WaitAsync(ct);
                     }
+                    ct.ThrowIfCancellationRequested();
 
                     memory.Position = 0;
                     totalBytes = memory.Length;
@@ -267,53 +291,76 @@ namespace KanikoRemote.K8s
                     using (var sr = new StreamReader(memory, leaveOpen: true))
                     {
                         var writeBuffer = new char[packetSize];
-                        while (!sr.EndOfStream)
+                        while (!sr.EndOfStream && !ct.IsCancellationRequested)
                         {
-                            var amountRead = await sr.ReadBlockAsync(writeBuffer, 0, packetSize);
-                            await podWriter.WriteLineAsync(writeBuffer, 0, amountRead);
+                            var amountRead = await sr.ReadBlockAsync(writeBuffer, 0, packetSize).WaitAsync(ct);
+                            await podWriter.WriteLineAsync(writeBuffer, 0, amountRead).WaitAsync(ct);
                             progress?.Report((memory.Position, totalBytes));
                         }
                     }
                 }
 
-                await podWriter.WriteLineAsync("EOF");
-                await podWriter.WriteLineAsync($"base64 -d /tmp/{remoteTempFilename}.tar.gz.b64 >> /tmp/{remoteTempFilename}.tar.gz");
-                await podWriter.WriteLineAsync($"tar xvf /tmp/{remoteTempFilename}.tar.gz -C {remoteRoot}");
-                await podWriter.WriteLineAsync($"echo {completeToken}");
+                await podWriter.WriteLineAsync("EOF").WaitAsync(ct);
+                await podWriter.WriteLineAsync($"base64 -d /tmp/{remoteTempFilename}.tar.gz.b64 >> /tmp/{remoteTempFilename}.tar.gz").WaitAsync(ct);
+                await podWriter.WriteLineAsync($"tar xvf /tmp/{remoteTempFilename}.tar.gz -C {remoteRoot}").WaitAsync(ct);
+                await podWriter.WriteLineAsync($"echo {completeToken}").WaitAsync(ct);
+                ct.ThrowIfCancellationRequested();
             }
 
             // Awaiting the read task waits for the completion token, which includes untarring time
-            await readTask;
+            await readTask.WaitAsync(ct);
             podStream.Close();
+            ct.ThrowIfCancellationRequested();
 
             this.logger.LogDebug($"Completed pod data transfer");
             return totalBytes;
         }
 
-        public Task<long> UploadLocalFilesToContainerAsync(string podName, string container, string localRoot, IEnumerable<string> localAbsoluteFilepaths, string remoteRoot, int packetSize, IProgress<(long, long)>? progress = null)
+        public async Task<long> UploadLocalFilesToContainerAsync(
+            string podName,
+            string container,
+            string localRoot,
+            IEnumerable<string> localAbsoluteFilepaths,
+            string remoteRoot,
+            int packetSize,
+            IProgress<(long, long)>? progress = null,
+            CancellationToken ct = default)
         {
             var entries = new List<TarEntry>();
             foreach (var localFile in localAbsoluteFilepaths)
             {
-                this.logger.LogDebug($"Including file in transfer to pod: {localFile}");
+                var relPath = Path.GetRelativePath(localRoot, localFile);
+                this.logger.LogDebug($"Including file in transfer to pod: {relPath}");
                 var entry = TarEntry.CreateEntryFromFile(localFile);
+                entry.Name = relPath;
                 entries.Add(entry);
             }
             this.logger.LogDebug($"Transferring {entries.Count} files to pod");
-            return this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
+            
+            return await this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
             {
                 var tarArchive = TarArchive.CreateOutputTarArchive(tarStream);
-                tarArchive.RootPath = localRoot;
+                var root = Path.GetFullPath(localRoot);
+                tarArchive.RootPath = ""; // Entries are already using relative names by this point
                 foreach (var te in entries)
                 {
                     tarArchive.WriteEntry(te, false);
+                    this.logger.LogInformation(string.Join(' ', te.File));
                 }
-            }, packetSize, progress);
+            }, packetSize, progress, ct);
         }
 
-        public Task<long> UploadStringAsFileToContiainerAsync(string podName, string container, string stringData, string fileName, string remoteRoot, int packetSize, IProgress<(long, long)>? progress = null)
+        public async Task<long> UploadStringAsFileToContiainerAsync(
+            string podName,
+            string container,
+            string stringData,
+            string fileName,
+            string remoteRoot,
+            int packetSize,
+            IProgress<(long, long)>? progress = null,
+            CancellationToken ct = default)
         {
-            return this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
+            return await this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
             {
                 // Form tar header
                 var tarHeader = new TarHeader();
@@ -324,7 +371,7 @@ namespace KanikoRemote.K8s
                 tarStream.PutNextEntry(tarEntry);
                 tarStream.Write(Encoding.UTF8.GetBytes(stringData));
                 tarStream.CloseEntry();
-            }, packetSize, progress);
+            }, packetSize, progress, ct);
         }
     }
 }

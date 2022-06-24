@@ -31,7 +31,7 @@
 
   <ItemGroup> <!-- unsure if this does anything/works? -->
     <TrimmableAssembly Include="GitInfo" />
-    <TrimmableAssembly Include="KubernetesClient" />
+    <!-- <TrimmableAssembly Include="KubernetesClient" /> -->
     <TrimmableAssembly Include="Microsoft.Extensions.FileSystemGlobbing" />
     <TrimmableAssembly Include="Microsoft.Extensions.Logging" />
     <TrimmableAssembly Include="SharpZipLib" />
