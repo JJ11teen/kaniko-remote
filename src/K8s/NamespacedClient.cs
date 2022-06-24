@@ -345,7 +345,6 @@ namespace KanikoRemote.K8s
                 foreach (var te in entries)
                 {
                     tarArchive.WriteEntry(te, false);
-                    this.logger.LogInformation(string.Join(' ', te.File));
                 }
             }, packetSize, progress, ct);
         }
