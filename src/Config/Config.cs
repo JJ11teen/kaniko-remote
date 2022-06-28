@@ -132,6 +132,10 @@ namespace KanikoRemote.Config
                     {
                         auth = new ACRAuth(authOption, loggerFactory.CreateLogger<ACRAuth>());
                     }
+                    else if (authType == "docker-hub")
+                    {
+                        auth = new DockerHubAuth(authOption, loggerFactory.CreateLogger<DockerHubAuth>());
+                    }
                     else
                     {
                         throw new InvalidConfigException($"Unknown auth type {authType}", authOption.ToJsonString());
