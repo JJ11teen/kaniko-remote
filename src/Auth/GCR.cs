@@ -28,7 +28,7 @@ namespace KanikoRemote.Auth
             }
             catch (KeyNotFoundException)
             {
-                throw new InvalidConfigException($"Invalid configuration for ACR auth", options.ToJsonString());
+                throw new InvalidConfigException($"Invalid configuration for GCR auth", options.ToJsonString());
             }
         }
 
