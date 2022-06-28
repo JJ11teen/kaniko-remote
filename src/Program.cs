@@ -87,7 +87,9 @@ namespace KanikoRemote
 
         public static string GetVersionString()
         {
-            return ThisAssembly.Git.SemVer.Major + "." + ThisAssembly.Git.SemVer.Minor + "." + ThisAssembly.Git.SemVer.Patch + "+" + ThisAssembly.Git.Commit;
+            // If the current commit has a tag, this is just that tag.
+            // Otherwise, {closed_tag}-{num_commits}-g{current_commit_hash_short}
+            return ThisAssembly.Git.Tag;
         }
 
     }
