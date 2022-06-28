@@ -1,11 +1,12 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using k8s.Models;
 using Microsoft.Extensions.Logging;
 
 namespace KanikoRemote.Auth
 {
-    internal class DockerHubAuth : PodOnlyAuth
+    internal class DockerHubAuth : Authoriser
     {
         private string username;
         private string password;
@@ -39,6 +40,11 @@ namespace KanikoRemote.Auth
                 { "auth", Convert.ToBase64String(Encoding.ASCII.GetBytes($"{this.username}:{this.password}")) }
             };
             return dockerConfig;
+        }
+
+        public override V1Pod AppendAuthToPod(V1Pod pod)
+        {
+            return pod;
         }
     }
 }

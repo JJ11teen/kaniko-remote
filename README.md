@@ -115,12 +115,17 @@ A single pod-only auth entry may have multiple of both env and volumes configure
 ### ACR
 
 `type: acr`
-A 'registry' option is required to be set to the hostname of your Azure Container Registry instance (usually takes the form `<name>.azurecr.io`). Can additionally have all the options available to pod-only auth.
+A 'registry' option is required to be set to the hostname of your Azure Container Registry instance (usually takes the form `<name>.azurecr.io`). Can additionally have all the options available to pod-only auth, and requires enough pod-auth to satisfy the ACR credential helper as specified here: https://github.com/chrismellard/docker-credential-acr-env
 
 ### Docker Hub
 
 `type: docker-hub`
 Your docker registry username and password must be configured with 'username' and 'password'.
+
+### GCR
+
+`type: gcr`
+Your gcr.io project name must be configured with 'project', or parsable from the url. The project is parseable from the url as follows: `gcr.io/<PROJECT>/`. Can additionally have all the options available to pod-only auth, and requires enough pod-auth to satisfy the GCR credential helper as specified here: https://github.com/GoogleCloudPlatform/docker-credential-gcr
 
 ## License
 

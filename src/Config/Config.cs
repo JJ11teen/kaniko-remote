@@ -136,6 +136,10 @@ namespace KanikoRemote.Config
                     {
                         auth = new DockerHubAuth(authOption, loggerFactory.CreateLogger<DockerHubAuth>());
                     }
+                    else if (authType == "gcr")
+                    {
+                        auth = new GCRAuth(authOption, loggerFactory.CreateLogger<GCRAuth>());
+                    }
                     else
                     {
                         throw new InvalidConfigException($"Unknown auth type {authType}", authOption.ToJsonString());
