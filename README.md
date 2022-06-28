@@ -120,12 +120,13 @@ A 'registry' option is required to be set to the hostname of your Azure Containe
 ### Docker Hub
 
 `type: docker-hub`
-Your docker registry username and password must be configured with 'username' and 'password'.
+Your docker registry username and password must be configured with 'username' and 'password' respectively.
 
 ### GCR
 
 `type: gcr`
-Your gcr.io project name must be configured with 'project', or parsable from the url. The project is parseable from the url as follows: `gcr.io/<PROJECT>/`. Can additionally have all the options available to pod-only auth, and requires enough pod-auth to satisfy the GCR credential helper as specified here: https://github.com/GoogleCloudPlatform/docker-credential-gcr
+Your gcr.io project name must be configured with 'project', or parsable from the url. The project is parseable from the url as follows: `gcr.io/<PROJECT>/`. Can additionally have all the options available to pod-only auth, and requires enough pod-auth to satisfy the GCR credential helper as specified here: https://github.com/GoogleCloudPlatform/docker-credential-gcr. Note that:
+> In particular, [the gcr credential helper] respects Application Default Credentials and is capable of generating credentials automatically (without an explicit login operation) when running in App Engine or Compute Engine.
 
 ## License
 
