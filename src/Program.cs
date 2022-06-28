@@ -1,5 +1,4 @@
 ﻿using System.CommandLine;
-using System.Diagnostics;
 using KanikoRemote.Builder;
 using KanikoRemote.CLI;
 using KanikoRemote.Config;
