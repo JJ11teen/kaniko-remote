@@ -26,7 +26,7 @@ The kaniko-remote configuration file is a yaml file with the following options:
 ```yaml
 kubernetes:
   # kubeconfig: 
-  # context
+  # context:
   namespace: kaniko-remote # Defaults to "default", unless running incluster in which case defaults to the current namespace
 builder:
   name: lucas # Default is to get the username from the environment

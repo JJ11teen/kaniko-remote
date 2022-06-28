@@ -1,0 +1,44 @@
+name: Tagged Release
+env:
+  DOTNET_VERSION: 6.0.x
+
+on:
+  push:
+    tags:        
+    - "v*.*.*"
+
+jobs:
+  build-cross-platforms:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - name: Setup dotnet
+      uses: actions/setup-dotnet@v1
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+    - name: Build & tar runtime specific binaries
+      run: |
+        dotnet publish -r linux-x64 -o linux-x64
+        dotnet publish -r linux-musl-x64 -o linux-musl-x64
+        dotnet publish -r linux-arm -o linux-arm
+        dotnet publish -r linux-arm64 -o linux-arm64
+        dotnet publish -r win10-x64 -o win10-x64
+        dotnet publish -r win10-x86 -o win10-x86
+        dotnet publish -r win10-arm -o win10-arm
+        dotnet publish -r win10-arm64 -o win10-arm64
+        dotnet publish -r osx-x64 -o osx-x64
+        dotnet publish -r osx-arm64 -o osx-arm64
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-linux-x64.tar.gz -C ./linux-x64/ .
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-linux-musl-x64.tar.gz -C ./linux-musl-x64/ .
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-linux-arm.tar.gz -C ./linux-arm/ .
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-linux-arm64.tar.gz -C ./linux-arm64/ .
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-win10-x64.tar.gz -C ./win10-x64/ .
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-win10-x86.tar.gz -C ./win10-x86/ .
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-win10-arm.tar.gz -C ./win10-arm/ .
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-win10-arm64.tar.gz -C ./win10-arm64/ .
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-osx-x64.tar.gz -C ./osx-x64/ .
+        tar -czf kaniko-remote-${{ env.github.ref_name }}-osx-arm64.tar.gz -C ./osx-arm64/ .
+    - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: kaniko-remote-${{ env.github.ref_name }}-*.tar.gz
