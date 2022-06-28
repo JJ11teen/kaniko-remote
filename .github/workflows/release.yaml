@@ -28,17 +28,17 @@ jobs:
         dotnet publish -r win10-arm64 -o win10-arm64
         dotnet publish -r osx-x64 -o osx-x64
         dotnet publish -r osx-arm64 -o osx-arm64
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-linux-x64.tar.gz -C ./linux-x64/ .
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-linux-musl-x64.tar.gz -C ./linux-musl-x64/ .
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-linux-arm.tar.gz -C ./linux-arm/ .
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-linux-arm64.tar.gz -C ./linux-arm64/ .
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-win10-x64.tar.gz -C ./win10-x64/ .
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-win10-x86.tar.gz -C ./win10-x86/ .
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-win10-arm.tar.gz -C ./win10-arm/ .
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-win10-arm64.tar.gz -C ./win10-arm64/ .
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-osx-x64.tar.gz -C ./osx-x64/ .
-        tar -czf kaniko-remote-${{ env.github.ref_name }}-osx-arm64.tar.gz -C ./osx-arm64/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-linux-x64.tar.gz -C ./linux-x64/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-linux-musl-x64.tar.gz -C ./linux-musl-x64/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-linux-arm.tar.gz -C ./linux-arm/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-linux-arm64.tar.gz -C ./linux-arm64/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-win10-x64.tar.gz -C ./win10-x64/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-win10-x86.tar.gz -C ./win10-x86/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-win10-arm.tar.gz -C ./win10-arm/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-win10-arm64.tar.gz -C ./win10-arm64/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-osx-x64.tar.gz -C ./osx-x64/ .
+        tar -czf kaniko-remote-${{ github.ref_name }}-osx-arm64.tar.gz -C ./osx-arm64/ .
     - name: Create github release
       uses: softprops/action-gh-release@v1
       with:
-        files: kaniko-remote-${{ env.github.ref_name }}-*.tar.gz
+        files: kaniko-remote-${{ github.ref_name }}-*.tar.gz
