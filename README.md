@@ -2,13 +2,15 @@
 Enable familiar `docker build` semantics using kaniko remotely on a preconfigured k8s cluster
 
 ## Quick Start
-Download and unpack the latest binary for your system. Rename to `docker` if you would like to exactly match the docker cli (this is useful if existing scripts expect docker).
+1. Download and unpack the latest binary for your system. Rename to `docker` if you would like to exactly match the docker cli (useful if using scripts that expect the docker cli).
 
-Run docker build commands as expected:
-```bash
+1. Ensure .kube/config is setup with permission to: create, get, watch, delete for: pods, pods/exec, pods/log. You can limit to the namespace kaniko-remote is configured to use.
+
+1. Run docker build commands as expected:
+  ```bash
+./kaniko-remote build -t registry.fish/my/cool-image:latest .
+# Or if you rename to docker and add to your path:
 docker build -t registry.fish/my/cool-image:latest .
-# Or if you haven't renamed to docker:
-kaniko-remote build -t registry.fish/my/cool-image:latest .
 ```
 
 ## Config
