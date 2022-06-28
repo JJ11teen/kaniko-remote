@@ -1,6 +1,9 @@
 # kaniko-remote
 Enable familiar `docker build` semantics using kaniko remotely on a preconfigured k8s cluster
 
+![GitHub release (latest by date)](https://img.shields.io/github/v/release/JJ11teen/kaniko-remote?label=latest)
+![GitHub Workflow Status](https://img.shields.io/github/workflow/status/JJ11teen/kaniko-remote/Build)
+
 ## Quick Start
 1. Download and unpack the latest binary for your system. Rename to `docker` if you would like to exactly match the docker cli (useful if using scripts that expect the docker cli).
 
