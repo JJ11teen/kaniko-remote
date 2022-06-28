@@ -38,7 +38,7 @@ jobs:
         tar -czf kaniko-remote-${{ env.github.ref_name }}-win10-arm64.tar.gz -C ./win10-arm64/ .
         tar -czf kaniko-remote-${{ env.github.ref_name }}-osx-x64.tar.gz -C ./osx-x64/ .
         tar -czf kaniko-remote-${{ env.github.ref_name }}-osx-arm64.tar.gz -C ./osx-arm64/ .
-    - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: kaniko-remote-${{ env.github.ref_name }}-*.tar.gz
+    - name: Create github release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: kaniko-remote-${{ env.github.ref_name }}-*.tar.gz
