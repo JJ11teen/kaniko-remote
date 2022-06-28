@@ -21,7 +21,7 @@ kaniko-remote will check for a configuration file in the following locations, us
 1. The `.kaniko-remote.yaml` in the user's home directory.
 1. An empty configuration file.
 
-The kaniko-remote configuration file supports the following options:
+The kaniko-remote configuration file is a yaml file with the following options:
 
 ```yaml
 kubernetes:
@@ -54,13 +54,13 @@ tags:
   # A mapping of regex patterns to match against and replace with
   regexes:
     pattern: template
-auth:
-  # List of auth configs to use.
-  # By default there are none, which is unlikely to work in a production setting.
-  # See below for available options
+# Auth is a list of auth configs to use.
+# By default there are none, which is unlikely to work in a production setting.
+# See below for available options
+auth: []
 ```
 
-An example config that I use:
+As an example, the config that I use:
 
 ```yaml
 kubernetes:
@@ -70,11 +70,11 @@ builder:
 tags:
   prefix: eliiza.azurecr.io/lucas-dev
 auth:
-  - type: acr
-    registry: eliiza.azurecr.io
-    mount: always
-    env:
-    - fromSecret: eliiza-azurecr-push-sp
+- type: acr
+  registry: eliiza.azurecr.io
+  mount: always
+  env:
+  - fromSecret: eliiza-azurecr-push-sp
 ```
 
 ## Configure Auth
