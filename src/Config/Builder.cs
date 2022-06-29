@@ -9,7 +9,7 @@ namespace KanikoRemote.Config
         public string SetupImage { get; set; } = "busybox:stable";
         public IDictionary<string, string> AdditionalLabels { get; set; } = new Dictionary<string, string>();
         public IDictionary<string, string> AdditionalAnnotations { get; set; } = new Dictionary<string, string>();
-        public IList<string> AdditionalKanikoArgs { get; set; } = new List<string>() { "--use-new-run" };
+        public IList<string> AdditionalKanikoArgs { get; set; } = new List<string>() { "--use-new-run", "--compressed-caching=false" };
         public int PodStartTimeout { get; set; } = 5 * 60; // 5 minutes
         public int PodTransferPacketSize { get; set; } = 14 * 1024; // 14kB
         public string KeepPod { get; set; } = "false";

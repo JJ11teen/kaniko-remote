@@ -41,8 +41,9 @@ builder:
     yes: hello
   additionalAnnotations:
     why: not
-  kanikoArgs: # Replaces default if provided, default is:
+  additionalKanikoArgs: # Replaces default if provided, default is:
   - --use-new-run
+  - --compressed-caching=false
   podStartTimeout: 300 # In seconds, default 5 mins
   podTransferPacketSize: 14e3 # In bytes, default 14kB
 # Tags are optional. By default kaniko-remote will use the tag specified on the command line.
@@ -58,7 +59,7 @@ tags:
   regexes:
     pattern: template
 # Auth is a list of auth configs to use.
-# By default there are none, which is unlikely to work in a production setting.
+# BAdditionalKanikoArgsy default there are none, which is unlikely to work in a production setting.
 # See below for available options
 auth: []
 ```
