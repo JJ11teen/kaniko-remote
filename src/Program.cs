@@ -26,6 +26,12 @@ namespace KanikoRemote
                 var logger = loggerFactory.CreateLogger<Program>();
                 logger.LogWarning("push is a no-op as kaniko-remote pushes successful builds automatically");
             }, loggerBinder);
+            
+            var pushCommand = new Command("tag", "A no-op as a successful build will tag automatically");
+            pushCommand.SetHandler((loggerFactory) => {
+                var logger = loggerFactory.CreateLogger<Program>();
+                logger.LogWarning("tag is a no-op as kaniko-remote pushes successful builds (with support for multiple tags) automatically");
+            }, loggerBinder);
 
             var versionCommand = new Command("version", "Show the kaniko-remote version information");
             versionCommand.SetHandler((loggerFactory) => {
