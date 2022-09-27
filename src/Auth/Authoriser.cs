@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s.Models;
 using Microsoft.Extensions.Logging;
+using KanikoRemote.CLI;
 
 namespace KanikoRemote.Auth
 {
@@ -13,12 +14,8 @@ namespace KanikoRemote.Auth
         abstract public JsonObject AppendAuthToDockerConfig(JsonObject dockerConfig);
         abstract public V1Pod AppendAuthToPod(V1Pod pod);
 
-        protected ILogger<Authoriser> logger;
-
-        public Authoriser(JsonObject options, ILogger<Authoriser> logger)
+        public Authoriser(JsonObject options)
         {
-            this.logger = logger;
-
             var url = options["url"]?.GetValue<string>();
             var mountStr = options["mount"]?.GetValue<string>();
             var alwaysMount = false;
@@ -31,13 +28,13 @@ namespace KanikoRemote.Auth
                 }
                 else if (mountStr != "onMatch")
                 {
-                    throw new InvalidConfigException($"auth 'mount' must be one of 'onMatch' or 'always'", options.ToJsonString());
+                    throw KanikoRemoteConfigException.WithJson<JsonObject>($"auth 'mount' must be one of 'onMatch' or 'always'", options);
                 }
             }
 
             if ((url != null && alwaysMount) || (url == null && !alwaysMount))
             {
-                throw new InvalidConfigException($"auth 'url' must be set unless 'mount' set to 'always'", options.ToJsonString());
+                throw KanikoRemoteConfigException.WithJson<JsonObject>($"auth 'url' must be set unless 'mount' set to 'always'", options);
             }
             this.URLToMatch = url;
         }

@@ -1,3 +1,4 @@
+using KanikoRemote.CLI;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -21,10 +22,8 @@ namespace KanikoRemote.Config
         private const string ConfigLocationEnvVar = "KANIKO_REMOTE_CONFIG";
         private const string ConfigFileName = ".kaniko-remote.yaml";
 
-        public static Config LoadConfig(ILoggerFactory loggerFactory)
+        public static Config LoadConfig()
         {
-            var logger = loggerFactory.CreateLogger<ConfigLoader>();
-
             string? configLocation = null;
             var envVarLocation = Environment.GetEnvironmentVariable(ConfigLocationEnvVar);
             var cwdLocation = Path.Combine(Environment.CurrentDirectory, ConfigFileName);
@@ -38,7 +37,7 @@ namespace KanikoRemote.Config
                 }
                 else
                 {
-                    logger.LogWarning($"No configuration file found at {envVarLocation}");
+                    SimpleLogger.WriteWarn($"No configuration file found at {envVarLocation}");
                 }
             }
             else if (File.Exists(cwdLocation))
@@ -53,12 +52,12 @@ namespace KanikoRemote.Config
             JsonObject json;
             if (configLocation != null)
             {
-                logger.LogInformation($"Using configuration file {configLocation}");
+                SimpleLogger.WriteInfo($"Using configuration file {configLocation}");
                 json = LoadYamlFileAsJsonObject(configLocation);
             }
             else
             {
-                logger.LogInformation("Using default configuration");
+                SimpleLogger.WriteInfo("Using default configuration");
                 json = new JsonObject();
             }
 
@@ -66,16 +65,16 @@ namespace KanikoRemote.Config
                 Kubernetes: ParseAndRemoveStaticConfigSection<KubernetesConfiguration>(json, "kubernetes"),
                 Builder: ParseAndRemoveStaticConfigSection<BuilderConfiguration>(json, "builder"),
                 Tagger: ParseAndRemoveStaticConfigSection<TaggerConfiguration>(json, "tags"),
-                Authorisers: ParseAuthorisers(json, loggerFactory));
+                Authorisers: ParseAuthorisers(json));
             
             if (json.Count > 0)
             {
-                throw new InvalidConfigException("Allowed top level options are 'kubernetes', 'builder', 'tags' and 'auth'", json.ToJsonString());
+                throw KanikoRemoteConfigException.WithJson<JsonObject>("Allowed top level options are 'kubernetes', 'builder', 'tags' and 'auth'", json);
             }
 
             if (config.Authorisers.Count == 0)
             {
-                logger.LogInformation("No auth configured. This is unlikely to work in a production environment.");
+                SimpleLogger.WriteWarn("No auth configured. This is unlikely to work in a production environment.");
             }
             return config;
         }
@@ -96,18 +95,18 @@ namespace KanikoRemote.Config
                 T? deserialised = (T?)JsonSerializer.Deserialize(sectionNode, typeof(T), ConfigSerialiserContext.Default);
                 if (sectionNode == null || deserialised == null)
                 {
-                    throw new InvalidConfigException($"Empty configuration section '{sectionName}'", rootConfig.ToJsonString());
+                    throw KanikoRemoteConfigException.WithJson<JsonObject>($"Empty configuration section '{sectionName}'", rootConfig);
                 }
                 if (deserialised.HasExtraJson)
                 {
-                    throw new InvalidConfigException($"Unknown properties in '{sectionName}'", sectionNode.ToJsonString());
+                    throw KanikoRemoteConfigException.WithJson<JsonObject>($"Unknown properties in '{sectionName}'", sectionNode);
                 }
                 return deserialised;
             }
             return new T();
         }
 
-        private static List<Authoriser> ParseAuthorisers(JsonObject rootConfig, ILoggerFactory loggerFactory)
+        private static List<Authoriser> ParseAuthorisers(JsonObject rootConfig)
         {
             var authorisers = new List<Authoriser>();
 
@@ -117,7 +116,7 @@ namespace KanikoRemote.Config
                 {
                     if (authJsonNode == null)
                     {
-                        throw new InvalidConfigException($"'auth' must be an array of non empty options", authNode.ToJsonString());
+                        throw KanikoRemoteConfigException.WithJson<JsonNode>($"'auth' must be an array of non empty options", authNode);
                     }
 
                     var authOption = authJsonNode.AsObject();
@@ -126,23 +125,23 @@ namespace KanikoRemote.Config
                     Authoriser auth;
                     if (authType != null || authType == "pod-only")
                     {
-                        auth = new PodOnlyAuth(authOption, loggerFactory.CreateLogger<PodOnlyAuth>());
+                        auth = new PodOnlyAuth(authOption);
                     }
                     else if (authType == "acr")
                     {
-                        auth = new ACRAuth(authOption, loggerFactory.CreateLogger<ACRAuth>());
+                        auth = new ACRAuth(authOption);
                     }
                     else if (authType == "docker-hub")
                     {
-                        auth = new DockerHubAuth(authOption, loggerFactory.CreateLogger<DockerHubAuth>());
+                        auth = new DockerHubAuth(authOption);
                     }
                     else if (authType == "gcr")
                     {
-                        auth = new GCRAuth(authOption, loggerFactory.CreateLogger<GCRAuth>());
+                        auth = new GCRAuth(authOption);
                     }
                     else
                     {
-                        throw new InvalidConfigException($"Unknown auth type {authType}", authOption.ToJsonString());
+                        throw KanikoRemoteConfigException.WithJson<JsonNode>($"Unknown auth type {authType}", authOption);
                     }
 
                     authorisers.Add(auth);

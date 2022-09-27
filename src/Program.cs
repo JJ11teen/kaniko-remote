@@ -11,7 +11,6 @@ namespace KanikoRemote
     {
         static async Task<int> Main(string[] args)
         {
-            var loggerBinder = new LoggerBinder();
             var rootCommand = new RootCommand(description: "Build an image from a Dockerfile on a k8s cluster using kaniko\n\n"
                 + "kaniko-remote matches the docker CLI usage for building container images, "
                 + "acting as a shim between a docker build command and kaniko running on a (possibly remote) "
@@ -19,25 +18,22 @@ namespace KanikoRemote
 
             var buildCommand = new Command("build", "Build and push an image to a repository from a Dockerfile");
             var buildCommandBinder = new BuildCommandBinder(buildCommand);
-            buildCommand.SetHandler(Build, buildCommandBinder, loggerBinder);
+            buildCommand.SetHandler(Build, buildCommandBinder);
 
             var pushCommand = new Command("push", "A no-op as a successful build will push automatically");
-            pushCommand.SetHandler((loggerFactory) => {
-                var logger = loggerFactory.CreateLogger<Program>();
-                logger.LogWarning("push is a no-op as kaniko-remote pushes successful builds automatically");
-            }, loggerBinder);
+            pushCommand.SetHandler(() => {
+                SimpleLogger.WriteInfo("push is a no-op as kaniko-remote pushes successful builds automatically");
+            });
             
-            var pushCommand = new Command("tag", "A no-op as a successful build will tag automatically");
-            pushCommand.SetHandler((loggerFactory) => {
-                var logger = loggerFactory.CreateLogger<Program>();
-                logger.LogWarning("tag is a no-op as kaniko-remote pushes successful builds (with support for multiple tags) automatically");
-            }, loggerBinder);
+            var tagCommand = new Command("tag", "A no-op as a successful build will tag automatically");
+            tagCommand.SetHandler(() => {
+                SimpleLogger.WriteInfo("tag is a no-op as kaniko-remote pushes successful builds (with support for multiple tags) automatically");
+            });
 
             var versionCommand = new Command("version", "Show the kaniko-remote version information");
-            versionCommand.SetHandler((loggerFactory) => {
-                var logger = loggerFactory.CreateLogger<Program>();
-                logger.LogWarning(new EventId(1000, "version"), GetVersionString());
-            }, loggerBinder);
+            versionCommand.SetHandler(() => {
+                SimpleLogger.WritePlainText(GetVersionString());
+            });
 
             rootCommand.AddCommand(buildCommand);
             rootCommand.AddCommand(pushCommand);
@@ -46,15 +42,13 @@ namespace KanikoRemote
             return await rootCommand.InvokeAsync(args);
         }
 
-        static async Task Build(BuildArguments buildCommandArgs, ILoggerFactory loggerFactory)
+        static async Task Build(BuildArguments buildCommandArgs)
         {
-            var logger = loggerFactory.CreateLogger<Program>();
+            var config = ConfigLoader.LoadConfig();
 
-            var config = ConfigLoader.LoadConfig(loggerFactory);
+            var tagger = new Tagger.Tagger(config.Tagger);
 
-            var tagger = new Tagger.Tagger(config.Tagger, loggerFactory.CreateLogger<Tagger.Tagger>());
-
-            var k8sClient = new NamespacedClient(config.Kubernetes, loggerFactory.CreateLogger<NamespacedClient>());
+            var k8sClient = new NamespacedClient(config.Kubernetes);
             
             var cts = new CancellationTokenSource();
             var cancelledOnce = false;
@@ -63,7 +57,7 @@ namespace KanikoRemote
             {
                 if (!cancelledOnce)
                 {
-                    logger.LogWarning("Cancelling... ctrl-c again to abort");
+                    SimpleLogger.WriteInfo("Cancelling... ctrl-c again to abort");
                     cts.Cancel();
                     e.Cancel = true;
                     cancelledOnce = true;
@@ -77,8 +71,7 @@ namespace KanikoRemote
                 destinationTags: tagger.TransformTags(buildCommandArgs.DestinationTags),
                 authorisers: config.Authorisers,
                 kanikoPassthroughArgs: buildCommandArgs.SerialiseKanikoPassthroughArgs(),
-                config: config.Builder,
-                logger: loggerFactory.CreateLogger<Builder.Builder>()))
+                config: config.Builder))
             {
                 await builder.Initialise(cts.Token);
 
@@ -86,8 +79,8 @@ namespace KanikoRemote
 
                 var imageDigest = await builder.Build(cts.Token);
 
-                logger.LogInformation($"Built image digest: {imageDigest}");
-                logger.LogInformation("The newly built image has been pushed to your container registry and is not available locally");
+                SimpleLogger.WriteInfo($"Built image digest: {imageDigest}");
+                SimpleLogger.WriteInfo("The newly built image has been pushed to your container registry and is not available locally");
             }
         }
 

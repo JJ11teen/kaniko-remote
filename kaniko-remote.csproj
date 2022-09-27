@@ -12,14 +12,20 @@
   <PropertyGroup>
     <RootNamespace>KanikoRemote</RootNamespace>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net7.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <PublishSingleFile>true</PublishSingleFile>
-    <SelfContained>true</SelfContained>
     <RuntimeIdentifiers>linux-x64;linux-musl-x64;linux-arm;linux-arm64;win10-x64;win10-x86;win10-arm;win10-arm64;osx-x64;osx-arm64;</RuntimeIdentifiers>
-    <PublishTrimmed>true</PublishTrimmed>
-    <TrimmerRemoveSymbols>true</TrimmerRemoveSymbols>
+    <!-- Fully compile Ahead of Time (platform specific) -->
+    <PublishAot>true</PublishAot>
+    <!-- <SelfContained>true</SelfContained> -->
+    <!-- Exclude debug info from final binary -->
+    <StripSymbols>true</StripSymbols>
+    <!-- <PublishTrimmed>true</PublishTrimmed> -->
+    <!-- <TrimmerRemoveSymbols>true</TrimmerRemoveSymbols> -->
+    
+    <!-- Other binary reducing settings -->
     <EventSourceSupport>false</EventSourceSupport>
     <InvariantGlobalization>true</InvariantGlobalization>
     <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
@@ -28,13 +34,13 @@
 
   <ItemGroup>
     <PackageReference Include="GitInfo" Version="2.2.0" />
-    <PackageReference Include="KubernetesClient" Version="8.0.8" />
-    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="6.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging" Version="6.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="6.0.0" />
+    <PackageReference Include="KubernetesClient" Version="8.0.68" />
+    <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" Version="7.0.0-rc.1.22426.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="7.0.0-rc.1.22426.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="7.0.0-rc.1.22426.10" />
     <PackageReference Include="SharpZipLib" Version="1.3.3" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
-    <PackageReference Include="YamlDotNet" Version="11.2.1" />
+    <PackageReference Include="YamlDotNet" Version="12.0.1" />
   </ItemGroup>
 
   <ItemGroup> <!-- unsure if this does anything/works? -->

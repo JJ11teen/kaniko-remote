@@ -2,22 +2,21 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using KanikoRemote.Config;
 using Microsoft.Extensions.Logging;
+using KanikoRemote.CLI;
 
 namespace KanikoRemote.Tagger
 {
     internal class Tagger
     {
-        private readonly ILogger<Tagger> logger;
         private readonly TaggerConfiguration config;
         private readonly IDictionary<Regex, string> regexesByTemplate;
         private bool hasDefault { get => this.config.Default != null; }
         private bool hasStatic { get => this.config.Static != null; }
         private bool hasPrefix { get => this.config.Prefix != null; }
         private bool hasRegex { get => this.regexesByTemplate.Count > 0; }
-        public Tagger(TaggerConfiguration config, ILogger<Tagger> logger)
+        public Tagger(TaggerConfiguration config)
         {
             this.config = config;
-            this.logger = logger;
 
             this.regexesByTemplate = new SortedDictionary<Regex, string>();
             foreach (var (template, replacement) in this.config.Regexes)
@@ -27,7 +26,7 @@ namespace KanikoRemote.Tagger
 
             if (this.hasStatic && (this.hasPrefix || this.hasDefault || this.hasRegex))
             {
-                throw new InvalidConfigException("No other tags options may be configured when 'static' is set", JsonSerializer.Serialize(this.config, typeof(TaggerConfiguration), ConfigSerialiserContext.Default)!);
+                throw KanikoRemoteConfigException.WithJson<TaggerConfiguration>("No other tags options may be configured when 'static' is set", this.config);
             }
         }
 
@@ -35,7 +34,7 @@ namespace KanikoRemote.Tagger
         {
             if (this.hasStatic)
             {
-                this.logger.LogWarning($"Overwriting destination with static tag: {this.config.Static}");
+                SimpleLogger.WriteInfo($"Overwriting destination with static tag: {this.config.Static}");
                 return new List<string> {this.config.Static!};
             }
 
@@ -43,11 +42,12 @@ namespace KanikoRemote.Tagger
             {
                 if (!this.hasDefault)
                 {
-                    throw new InvalidDataException("No tag specified and no default tag configured, specify a tag with -t");
+                    SimpleLogger.WriteError("No tag specified and no default tag configured, specify a tag with -t");
+                    Environment.Exit(1);
                 }
                 else
                 {
-                    this.logger.LogWarning($"Using configured default tag {this.config.Default}");
+                    SimpleLogger.WriteInfo($"Using configured default tag {this.config.Default}");
                     return new List<string> {this.config.Default!};
                 }
             }
@@ -72,7 +72,7 @@ namespace KanikoRemote.Tagger
                 }
             }
             var prettyPrint = string.Join(", ", outputTags);
-            this.logger.LogInformation($"Adjusted tags to: {prettyPrint}");
+            SimpleLogger.WriteInfo($"Adjusted tags to: {prettyPrint}");
             return outputTags;
         }
     }

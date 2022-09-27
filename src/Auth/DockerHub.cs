@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s.Models;
 using Microsoft.Extensions.Logging;
+using KanikoRemote.CLI;
 
 namespace KanikoRemote.Auth
 {
@@ -10,7 +11,7 @@ namespace KanikoRemote.Auth
     {
         private string username;
         private string password;
-        public DockerHubAuth(JsonObject options, ILogger<DockerHubAuth> logger) : base(options, logger)
+        public DockerHubAuth(JsonObject options) : base(options)
         {
             try
             {
@@ -18,14 +19,14 @@ namespace KanikoRemote.Auth
                 var password = options["password"]?.GetValue<string>();
                 if (username == null || password == null)
                 {
-                    throw new InvalidConfigException($"Invalid configuration for DockerHub auth, must have 'username' and 'password' specified", options.ToJsonString());
+                    throw KanikoRemoteConfigException.WithJson<JsonObject>($"Invalid configuration for DockerHub auth, must have 'username' and 'password' specified", options);
                 }
                 this.username = username;
                 this.password = password;
             }
             catch (KeyNotFoundException)
             {
-                throw new InvalidConfigException($"Invalid configuration for ACR auth", options.ToJsonString());
+                throw KanikoRemoteConfigException.WithJson<JsonObject>($"Invalid configuration for ACR auth", options);
             }
         }
 

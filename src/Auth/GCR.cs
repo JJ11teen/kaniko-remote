@@ -2,13 +2,14 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
+using KanikoRemote.CLI;
 
 namespace KanikoRemote.Auth
 {
     internal class GCRAuth : PodOnlyAuth
     {
         private string project; // gcr.io/$project/
-        public GCRAuth(JsonObject options, ILogger<GCRAuth> logger) : base(options, logger)
+        public GCRAuth(JsonObject options) : base(options)
         {
             try
             {
@@ -21,14 +22,14 @@ namespace KanikoRemote.Auth
                 {
                     if (this.AlwaysMount())
                     {
-                        throw new InvalidConfigException($"Invalid configuration for GCR auth, must have 'project' specified or parsable from url", options.ToJsonString());
+                        throw KanikoRemoteConfigException.WithJson<JsonObject>($"Invalid configuration for GCR auth, must have 'project' specified or parsable from url", options);
                     }
                     this.project = new UriBuilder(this.URLToMatch!).Path.Split("/").First();
                 }
             }
             catch (KeyNotFoundException)
             {
-                throw new InvalidConfigException($"Invalid configuration for GCR auth", options.ToJsonString());
+                throw KanikoRemoteConfigException.WithJson<JsonObject>($"Invalid configuration for GCR auth", options);
             }
         }
 

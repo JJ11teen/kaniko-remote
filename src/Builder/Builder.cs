@@ -4,18 +4,15 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using k8s.Models;
 using KanikoRemote.Auth;
-using KanikoRemote.CLI;
 using KanikoRemote.Config;
 using KanikoRemote.K8s;
 using Microsoft.Extensions.FileSystemGlobbing;
-using Microsoft.Extensions.Logging;
 
 namespace KanikoRemote.Builder
 {
     internal class Builder : IAsyncDisposable
     {
         private NamespacedClient k8sClient;
-        private ILogger<Builder> logger;
 
         private V1Pod pod;
         private string? localContext;
@@ -48,11 +45,9 @@ namespace KanikoRemote.Builder
             IEnumerable<string> destinationTags,
             IEnumerable<Authoriser> authorisers,
             IEnumerable<string> kanikoPassthroughArgs,
-            BuilderConfiguration config,
-            ILogger<Builder> logger)
+            BuilderConfiguration config)
         {
             this.k8sClient = k8sClient;
-            this.logger = logger;
 
             this.podStartTimeout = config.PodStartTimeout;
             this.podTransferPacketSize = config.PodTransferPacketSize;
@@ -76,7 +71,7 @@ namespace KanikoRemote.Builder
                 var localDockerfile = Path.Combine(this.localContext, dockerfile ?? "Dockerfile");
                 if (!File.Exists(localDockerfile))
                 {
-                    throw new FileNotFoundException($"Could not find dockerfile {localDockerfile}");
+                    throw new LocalContextException($"Could not find dockerfile {localDockerfile}");
                 }
                 kanikoArgs = GenerateKanikoArgumentList(
                     dockerfile,
@@ -106,9 +101,9 @@ namespace KanikoRemote.Builder
                 this.pod = authoriser.AppendAuthToPod(this.pod);
             }
 
-            this.logger.LogInformation($"Configured builder with the {matchingAuthorisers.Count()} auth profiles");
-            this.logger.LogDebug($"Generated docker config for builder: {dockerConfig}");
-            this.logger.LogDebug($"Generated pod spec for builder: {this.pod}");
+            SimpleLogger.WriteInfo($"Configured builder with the {matchingAuthorisers.Count()} auth profiles");
+            SimpleLogger.WriteDebug($"Generated docker config for builder: {dockerConfig}");
+            SimpleLogger.WriteDebug($"Generated pod spec for builder: {this.pod}");
         }
 
         public async ValueTask DisposeAsync()
@@ -117,18 +112,18 @@ namespace KanikoRemote.Builder
             {
                 if (this.keepPod)
                 {
-                    this.logger.LogWarning($"Not removing builder pod {this.podNameInKube} as 'keepPod' configured");
+                    SimpleLogger.WriteInfo($"Not removing builder pod {this.podNameInKube} as 'keepPod' configured");
                 }
                 else
                 {
-                    logger.LogInformation($"Deleting builder pod {this.podNameInKube}");
+                    SimpleLogger.WriteInfo($"Removing builder pod {this.podNameInKube}");
                     await this.k8sClient.DeletePodAsync(this.podNameInKube);
-                    logger.LogInformation($"Deleted builder pod {this.podNameInKube}");
+                    SimpleLogger.WriteInfo($"Removed builder pod {this.podNameInKube}");
                 }
             }
             else
             {
-                logger.LogInformation("Builder not initialised, so no disposal required");
+                SimpleLogger.WriteInfo("Builder not initialised, so no disposal required");
             }
         }
 
@@ -138,12 +133,12 @@ namespace KanikoRemote.Builder
             {
                 if (!uri.IsAbsoluteUri)
                 {
-                    this.logger.LogInformation("Local context detected, the context will be transferred directly to the builder pod");
+                    SimpleLogger.WriteInfo("Local context detected, the context will be transferred directly to the builder pod");
                     return true;
                 }
                 else
                 {
-                    logger.LogInformation("Remote context detected, builder pod will be authorised to access configured remote storage");
+                    SimpleLogger.WriteInfo("Remote context detected, builder pod will be authorised to access configured remote storage");
                     return false;
                 }
             }
@@ -175,8 +170,8 @@ namespace KanikoRemote.Builder
         {
             this.pod = await this.k8sClient.CreatePodAsync(this.pod, ct);
             ct.ThrowIfCancellationRequested();
-            this.logger.LogDebug($"Initialised builder pod with spec: {this.pod}");
-            this.logger.LogInformation($"Builder {this.builderName} created, pending scheduling");
+            SimpleLogger.WriteDebug($"Initialised builder pod with spec: {this.pod}");
+            SimpleLogger.WriteInfo($"Builder {this.builderName} created, pending scheduling");
             return this.podNameInKube;
         }
 
@@ -198,7 +193,7 @@ namespace KanikoRemote.Builder
             }
             else
             {
-                logger.LogInformation($"Using remote storage as build context, skipping local upload");
+                SimpleLogger.WriteDebug($"Using remote storage as build context, skipping local upload");
             }
 
             await this.k8sClient.UploadStringAsFileToContiainerAsync(
@@ -212,7 +207,7 @@ namespace KanikoRemote.Builder
             ct.ThrowIfCancellationRequested();
 
             this.timer.Stop();
-            this.logger.LogInformation($"Builder {this.builderName} setup in {this.timerStr}, streaming logs:");
+            SimpleLogger.WriteInfo($"Builder {this.builderName} setup in {this.timerStr}, streaming logs:");
             return this.podNameInKube;
         }
 
@@ -255,7 +250,7 @@ namespace KanikoRemote.Builder
                 sb.Append(total / 1024);
                 sb.Append("kB)");
                 
-                this.logger.LogInformation(new EventId(2000, "progress"), sb.ToString());
+                SimpleLogger.WriteProgression(sb.ToString());
             });
 
             var bytesSent = await this.k8sClient.UploadLocalFilesToContainerAsync(
@@ -269,7 +264,7 @@ namespace KanikoRemote.Builder
                 ct: ct);
             ct.ThrowIfCancellationRequested();
 
-            this.logger.LogInformation($"Transferred {fileCount} files to builder ({bytesSent / 1024}kB)".PadRight(100));
+            SimpleLogger.WriteInfo($"Transferred {fileCount} files to builder ({bytesSent / 1024}kB)".PadRight(100));
         }
 
         public async Task<string> Build(CancellationToken ct)
@@ -300,9 +295,9 @@ namespace KanikoRemote.Builder
                     sinceSeconds: 10,
                     ct: ct))
                 {
-                    this.logger.LogInformation(logLine);
+                    SimpleLogger.WriteInfo(logLine);
                 }
-                throw new KanikoException("Kaniko failed to start, see above logs for more information", failed.Result);
+                throw new KanikoRuntimeException("Kaniko failed to start, see above logs for more information", failed.Result);
             }
 
             // Else tail for actual build logs
@@ -313,7 +308,7 @@ namespace KanikoRemote.Builder
                 tail: true,
                 ct: ct))
             {
-                this.logger.LogInformation(logLine);
+                SimpleLogger.WriteInfo(logLine);
             }
             ct.ThrowIfCancellationRequested();
 
@@ -327,10 +322,11 @@ namespace KanikoRemote.Builder
             this.timer.Stop();
             if (finished.ExitCode == 0)
             {
-                this.logger.LogInformation($"Builder {this.builderName} complete in {this.timerStr}");
+                SimpleLogger.WriteInfo($"Builder {this.builderName} complete in {this.timerStr}");
                 return finished.Message;
             }
-            throw new KanikoException("Kaniko failed to build and/or push image, increase verbosity if kaniko logs are not visible above", finished);
+
+            throw new KanikoRuntimeException("Kaniko failed to build and/or push image, increase verbosity if kaniko logs are not visible above");
         }
     }
 }
