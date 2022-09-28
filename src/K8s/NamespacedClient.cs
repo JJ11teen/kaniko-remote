@@ -10,7 +10,6 @@ using k8s;
 using k8s.Models;
 using k8s.Autorest;
 using k8s.Exceptions;
-using ICSharpCode.SharpZipLib.Tar;
 using KanikoRemote.Config;
 using KanikoRemote.CLI;
 
@@ -286,8 +285,6 @@ namespace KanikoRemote.K8s
                     // Copy tarStream to memory stream, encoding as with gzip then b64
                     using (var base64Writer = new CryptoStream(memory, new ToBase64Transform(), CryptoStreamMode.Write, leaveOpen: true))
                     using (var gzipWriter = new GZipStream(base64Writer, CompressionMode.Compress, leaveOpen: true))
-                    // using (var tarWriter = new TarWriter(gzipWriter, leaveOpen: true))
-                    // using (var tarWriter = new TarOutputStream(gzipWriter, Encoding.UTF8))
                     {
                         await tarStream.CopyToAsync(gzipWriter);
                     }
@@ -365,31 +362,19 @@ namespace KanikoRemote.K8s
             using (TarWriter tarWriter = new(tarStream, leaveOpen: true))
             {
                 PaxTarEntry entry = new(TarEntryType.RegularFile, fileName);
-                using MemoryStream rawStream = new();
-                using (StreamWriter streamWriter = new(rawStream, Encoding.UTF8, leaveOpen: true))
+                using MemoryStream fileStream = new();
+                using (StreamWriter streamWriter = new(fileStream, new UTF8Encoding(false), leaveOpen: true))
                 {
                     await streamWriter.WriteAsync(stringData);
                 }
-                rawStream.Seek(0, SeekOrigin.Begin);
+                fileStream.Seek(0, SeekOrigin.Begin);
 
-                entry.DataStream = rawStream;
+                entry.DataStream = fileStream;
                 await tarWriter.WriteEntryAsync(entry);
             }
             tarStream.Seek(0, SeekOrigin.Begin);
 
             return await this.UploadTarToContainerAsync(podName, container, remoteRoot, tarStream, packetSize, progress, ct);
-            // return await this.UploadTarToContainerAsync(podName, container, remoteRoot, (tarStream) =>
-            // {
-            //     // Form tar header
-            //     var tarHeader = new TarHeader();
-            //     TarEntry.NameTarHeader(tarHeader, fileName);
-            //     var tarEntry = new TarEntry(tarHeader);
-            //     tarEntry.Size = Encoding.UTF8.GetByteCount(stringData);
-            //     // Write header & data to stream
-            //     tarStream.PutNextEntry(tarEntry);
-            //     tarStream.Write(Encoding.UTF8.GetBytes(stringData));
-            //     tarStream.CloseEntry();
-            // }, packetSize, progress, ct);
         }
     }
 }
